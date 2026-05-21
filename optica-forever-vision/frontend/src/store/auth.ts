@@ -13,8 +13,11 @@ export interface AuthUser {
 interface AuthState {
   token: string | null
   user: AuthUser | null
+  sessionExpired: boolean
   setSession: (token: string, user: AuthUser) => void
   logout: () => void
+  markExpired: () => void
+  clearExpired: () => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -22,9 +25,15 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: null,
       user: null,
-      setSession: (token, user) => set({ token, user }),
-      logout: () => set({ token: null, user: null }),
+      sessionExpired: false,
+      setSession: (token, user) => set({ token, user, sessionExpired: false }),
+      logout: () => set({ token: null, user: null, sessionExpired: false }),
+      markExpired: () => set({ token: null, user: null, sessionExpired: true }),
+      clearExpired: () => set({ sessionExpired: false }),
     }),
-    { name: "ofv-auth" }
+    {
+      name: "ofv-auth",
+      partialize: (s) => ({ token: s.token, user: s.user }),
+    }
   )
 )

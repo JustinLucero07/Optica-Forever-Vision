@@ -212,7 +212,7 @@ function printOrden(orden: Orden, pacNombre: string) {
   w.document.close()
 }
 
-function printAceptacion(orden: Orden, pacNombre: string) {
+function printAceptacion(orden: Orden, pacNombre: string, firma = "") {
   const rx = parsePrescripcion(orden.descripcion)
   const c = (v: string) =>
     `<td style="border:1px solid #ddd;padding:5px 8px;text-align:center;font-size:12px;">${v || "—"}</td>`
@@ -281,7 +281,10 @@ function printAceptacion(orden: Orden, pacNombre: string) {
     <div class="sig-row">
       <div class="sig"><div class="line"></div><p>Firma del cliente</p></div>
       <div class="sig"><div class="line"></div><p>Cédula / Documento</p></div>
-      <div class="sig"><div class="line"></div><p>Responsable Óptica Forever Vision</p></div>
+      <div class="sig">
+        ${firma ? `<img src="${firma}" style="height:44px;object-fit:contain;margin-bottom:2px" />` : "<div class=\"line\"></div>"}
+        <p>Responsable Óptica Forever Vision</p>
+      </div>
     </div>
     <p style="margin-top:16px;font-size:9px;color:#9ca3af;text-align:center">Av. 24 de mayo y Puyo, Cuenca · ${new Date().toLocaleString("es-EC")}</p>
   </div>
@@ -336,6 +339,12 @@ export default function Ordenes() {
   const [saving, setSaving] = useState(false)
   const [estadoDropdown, setEstadoDropdown] = useState<number | null>(null)
   const qc = useQueryClient()
+
+  const { data: config } = useQuery({
+    queryKey: ["configuracion"],
+    queryFn: () => api.get("/configuracion").then(r => r.data),
+    staleTime: 300_000,
+  })
 
   const { data: ordenes = [], isLoading } = useQuery<Orden[]>({
     queryKey: ["ordenes", filtroEstado],
@@ -466,7 +475,7 @@ export default function Ordenes() {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="rounded-lg border overflow-hidden">
+        <div className="rounded-lg border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -542,7 +551,7 @@ export default function Ordenes() {
                           variant="ghost"
                           size="sm"
                           title="Formato de aceptación"
-                          onClick={() => printAceptacion(o, pacienteNombre(o.paciente_id))}
+                          onClick={() => printAceptacion(o, pacienteNombre(o.paciente_id), config?.firma_electronica || "")}
                         >
                           <Printer className="h-4 w-4 text-indigo-600" />
                         </Button>

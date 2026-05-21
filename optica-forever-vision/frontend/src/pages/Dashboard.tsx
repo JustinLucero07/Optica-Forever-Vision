@@ -2,7 +2,9 @@ import { useQuery } from "@tanstack/react-query"
 import {
   TrendingUp, DollarSign, ShoppingBag, Clock,
   ClipboardList, CheckCircle, Users, ArrowDownCircle, Loader2,
+  Banknote, Package, AlertCircle,
 } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 import { api } from "@/lib/api"
 import { useAuthStore } from "@/store/auth"
@@ -20,6 +22,10 @@ interface KPIs {
   ordenes_listas: number
   pacientes_nuevos_mes: number
   mes: string
+  cobros_hoy: number
+  cuotas_vencidas_count: number
+  cuotas_vencidas_total: number
+  stock_bajo_count: number
 }
 
 function fmt(n: number) {
@@ -27,16 +33,20 @@ function fmt(n: number) {
 }
 
 function KpiCard({
-  label, value, sub, icon: Icon, color,
+  label, value, sub, icon: Icon, color, onClick,
 }: {
   label: string
   value: string
   sub?: string
   icon: React.ElementType
   color: string
+  onClick?: () => void
 }) {
   return (
-    <div className="bg-card rounded-xl border p-5 flex items-start gap-4">
+    <div
+      className={`bg-card rounded-xl border p-5 flex items-start gap-4 ${onClick ? "cursor-pointer hover:bg-accent/30 transition-colors" : ""}`}
+      onClick={onClick}
+    >
       <div className={`p-2 rounded-lg ${color}`}>
         <Icon className="h-5 w-5 text-white" />
       </div>
@@ -51,6 +61,7 @@ function KpiCard({
 
 export default function Dashboard() {
   const user = useAuthStore((s) => s.user)
+  const navigate = useNavigate()
 
   const { data: kpis, isLoading } = useQuery<KPIs>({
     queryKey: ["dashboard-kpis"],
@@ -119,6 +130,12 @@ export default function Dashboard() {
                 color="bg-violet-500"
               />
               <KpiCard
+                label="Cobros de hoy"
+                value={fmt(kpis.cobros_hoy)}
+                icon={Banknote}
+                color="bg-emerald-500"
+              />
+              <KpiCard
                 label="Turnos hoy"
                 value={kpis.turnos_hoy.toString()}
                 icon={Clock}
@@ -152,6 +169,30 @@ export default function Dashboard() {
                 sub="este mes"
                 icon={Users}
                 color="bg-teal-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Alertas
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <KpiCard
+                label="Cuotas vencidas"
+                value={kpis.cuotas_vencidas_count.toString()}
+                sub={fmt(kpis.cuotas_vencidas_total)}
+                icon={AlertCircle}
+                color={kpis.cuotas_vencidas_count > 0 ? "bg-red-600" : "bg-gray-400"}
+                onClick={() => navigate("/cxc")}
+              />
+              <KpiCard
+                label="Stock bajo"
+                value={kpis.stock_bajo_count.toString()}
+                sub="productos bajo mínimo"
+                icon={Package}
+                color={kpis.stock_bajo_count > 0 ? "bg-orange-500" : "bg-gray-400"}
+                onClick={() => navigate("/inventario")}
               />
             </div>
           </div>

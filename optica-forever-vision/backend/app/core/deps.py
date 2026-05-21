@@ -9,25 +9,32 @@ from app.models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
+_TOKEN_ERROR = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Sesión inválida o expirada",
+    headers={"WWW-Authenticate": "Bearer", "X-Auth-Error": "token_invalid"},
+)
+
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    creds_exc = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Credenciales inválidas",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALG])
-        user_id = int(payload.get("sub"))
-    except (JWTError, ValueError, TypeError):
-        raise creds_exc
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALG],
+            audience=settings.JWT_AUDIENCE,
+            issuer=settings.JWT_ISSUER,
+        )
+        user_id = int(payload["sub"])
+    except (JWTError, ValueError, TypeError, KeyError):
+        raise _TOKEN_ERROR
 
     user = db.get(User, user_id)
     if not user or not user.is_active:
-        raise creds_exc
+        raise _TOKEN_ERROR
     return user
 
 

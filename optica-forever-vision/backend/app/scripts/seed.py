@@ -67,6 +67,13 @@ def seed_configuraciones(db: Session) -> None:
 
 
 def run() -> None:
+    from app.core.config import settings
+    if settings.ENV == "prod":
+        raise RuntimeError(
+            "El script seed NO puede ejecutarse en producción (ENV=prod). "
+            "Crea los usuarios manualmente desde el módulo de Usuarios."
+        )
+
     db = SessionLocal()
     try:
         seed_usuarios(db)

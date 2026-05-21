@@ -14,9 +14,13 @@ import VentaNueva from "@/pages/VentaNueva"
 import VentaDetalle from "@/pages/VentaDetalle"
 import Cobros from "@/pages/Cobros"
 import Creditos from "@/pages/Creditos"
+import CuentasPorCobrar from "@/pages/CuentasPorCobrar"
 import Turnos from "@/pages/Turnos"
 import Ordenes from "@/pages/Ordenes"
 import Reportes from "@/pages/Reportes"
+import Usuarios from "@/pages/Usuarios"
+import Configuracion from "@/pages/Configuracion"
+import SRIImport from "@/pages/SRIImport"
 import { useAuthStore } from "@/store/auth"
 
 function RequireAuth() {
@@ -75,8 +79,12 @@ export const router = createBrowserRouter([
           // Cobros / Tesorería / Créditos
           { path: "cobros", element: <Cobros /> },
           { path: "creditos", element: <Creditos /> },
+          { path: "cxc", element: <CuentasPorCobrar /> },
           { path: "consultas", element: <Consultas /> },
           { path: "reportes", element: <Reportes /> },
+          { path: "usuarios", element: <Usuarios /> },
+          { path: "configuracion", element: <Configuracion /> },
+          { path: "sri-import", element: <SRIImport /> },
 
           { path: "*", element: <Navigate to="/" replace /> },
         ],

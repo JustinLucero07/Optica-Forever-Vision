@@ -44,7 +44,7 @@ function fmtRx(esf: any, cil: any, eje: any, add: any) {
   return parts.join("  ") || "—"
 }
 
-function printCertificado(c: any, paciente: any, conMedidas: boolean) {
+function printCertificado(c: any, paciente: any, conMedidas: boolean, firma = "") {
   const nom = paciente ? `${paciente.apellidos} ${paciente.nombres}` : `Paciente #${c.paciente_id}`
   const recLC = c.recetas?.find((r: any) => r.tipo === "lente_convencional")
   const recetaHtml = conMedidas && recLC ? `
@@ -100,16 +100,18 @@ function printCertificado(c: any, paciente: any, conMedidas: boolean) {
       ${c.diagnostico ? `<div class="row"><span class="lbl">Diagnóstico:</span><strong>${c.diagnostico}</strong></div>` : ""}
       ${c.plan_tratamiento ? `<div class="row"><span class="lbl">Plan:</span>${c.plan_tratamiento}</div>` : ""}
     </div>` : ""}
-    ${conMedidas ? `<div class="section"><h3>Prescripción</h3>${retcaHtml}</div>` : ""}
+    ${conMedidas ? `<div class="section"><h3>Prescripción</h3>${recetaHtml}</div>` : ""}
     ${c.proximo_control ? `<div class="section"><h3>Próximo control</h3><p style="font-size:11px">${c.proximo_control}</p></div>` : ""}
     <div style="display:flex;gap:40px;margin-top:36px">
-      <div class="sig">Optometrista</div>
+      <div class="sig">
+        ${firma ? `<img src="${firma}" style="height:48px;object-fit:contain;margin-bottom:4px" />` : ""}
+        Optometrista / Responsable
+      </div>
       <div class="sig">Firma / Huella del Paciente</div>
     </div>
     <p style="margin-top:16px;font-size:9px;color:#9ca3af;text-align:center">Av. 24 de mayo y Puyo, Cuenca · Generado ${new Date().toLocaleString("es-EC")}</p>
   </div>
   <script>window.onload=()=>window.print()</script></body></html>`
-    .replace("retcaHtml", "recetaHtml")
 
   const w = window.open("", "_blank", "width=700,height=800")
   if (w) { w.document.write(html); w.document.close() }
@@ -130,6 +132,12 @@ export default function ConsultaDetalle() {
     queryKey: ["paciente", c?.paciente_id],
     queryFn: () => api.get(`/pacientes/${c?.paciente_id}`).then(r => r.data),
     enabled: !!c?.paciente_id,
+  })
+
+  const { data: config } = useQuery({
+    queryKey: ["configuracion"],
+    queryFn: () => api.get("/configuracion").then(r => r.data),
+    staleTime: 300_000,
   })
 
   if (isLoading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Cargando…</div>
@@ -166,7 +174,7 @@ export default function ConsultaDetalle() {
               className={`px-3 py-1.5 transition-colors ${!conMedidas ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             >Sin medidas</button>
           </div>
-          <Button variant="outline" size="sm" onClick={() => printCertificado(c, paciente, conMedidas)}>
+          <Button variant="outline" size="sm" onClick={() => printCertificado(c, paciente, conMedidas, config?.firma_electronica || "")}>
             <Printer className="h-4 w-4 mr-1" /> Certificado
           </Button>
           {(rol === "admin" || rol === "optometrista") && (

@@ -13,7 +13,7 @@ import { useAuthStore } from "@/store/auth"
 export default function LoginPage() {
   const navigate = useNavigate()
   const setSession = useAuthStore((s) => s.setSession)
-  const [email, setEmail] = useState("admin@optica.local")
+  const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
 
@@ -26,10 +26,14 @@ export default function LoginPage() {
       toast.success(`Bienvenido, ${data.user.full_name}`)
       navigate("/")
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        "No se pudo iniciar sesión"
-      toast.error(message)
+      const e = err as { response?: { status?: number; data?: { detail?: string } }; code?: string }
+      if (!e.response) {
+        toast.error("Sin conexión con el servidor. Verifica tu red.")
+      } else if (e.response.status === 429) {
+        toast.error("Demasiados intentos fallidos. Espera 15 minutos e intenta de nuevo.")
+      } else {
+        toast.error(e.response.data?.detail ?? "Email o contraseña incorrectos")
+      }
     } finally {
       setLoading(false)
     }

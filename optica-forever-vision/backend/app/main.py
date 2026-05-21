@@ -3,20 +3,29 @@ from datetime import date, timedelta
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.limiter import SLOWAPI_AVAILABLE, limiter
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)
 
+# Rate limiter (activo solo si slowapi está instalado)
+if SLOWAPI_AVAILABLE:
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(api_router)
@@ -24,7 +33,7 @@ app.include_router(api_router)
 
 @app.get("/health", tags=["health"])
 def health() -> dict[str, str]:
-    return {"status": "ok", "env": settings.ENV}
+    return {"status": "ok"}
 
 
 # ── Cron jobs ──────────────────────────────────────────────────────────────────

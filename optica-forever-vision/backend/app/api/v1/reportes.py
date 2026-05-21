@@ -17,12 +17,13 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.models.agenda import OrdenTrabajo, Turno
+from app.models.credito import CuotaCredito
 from app.models.paciente import Paciente
 from app.models.producto import Producto
 from app.models.tesoreria import Cobro, Egreso
@@ -133,6 +134,32 @@ def dashboard_kpis(
         )
     ).scalar()
 
+    # Cuotas vencidas
+    cuotas_vencidas_count = db.execute(
+        select(func.count()).where(CuotaCredito.estado == "vencido")
+    ).scalar()
+
+    cuotas_vencidas_total = db.execute(
+        select(func.coalesce(
+            func.sum(CuotaCredito.monto - CuotaCredito.monto_pagado), 0
+        )).where(CuotaCredito.estado == "vencido")
+    ).scalar()
+
+    # Stock bajo
+    stock_bajo_count = db.execute(
+        select(func.count()).where(
+            Producto.activo.is_(True),
+            Producto.stock_actual <= Producto.stock_minimo,
+        )
+    ).scalar()
+
+    # Cobros de hoy
+    cobros_hoy = db.execute(
+        select(func.coalesce(func.sum(Cobro.monto), 0)).where(
+            Cobro.fecha == hoy
+        )
+    ).scalar()
+
     return {
         "ventas_hoy": float(ventas_hoy),
         "ventas_mes": float(ventas_mes),
@@ -146,6 +173,10 @@ def dashboard_kpis(
         "ordenes_listas": int(ordenes_listas),
         "pacientes_nuevos_mes": int(pacientes_mes),
         "mes": inicio_mes.strftime("%B %Y"),
+        "cuotas_vencidas_count": int(cuotas_vencidas_count),
+        "cuotas_vencidas_total": float(cuotas_vencidas_total),
+        "stock_bajo_count": int(stock_bajo_count),
+        "cobros_hoy": float(cobros_hoy),
     }
 
 
@@ -238,7 +269,7 @@ def _query_cobros(db: Session, desde: date | None, hasta: date | None):
     stmt = (
         select(
             Cobro.id, Cobro.numero, Cobro.fecha, Cobro.monto,
-            Cobro.forma_pago, Cobro.referencia,
+            Cobro.metodo_pago, Cobro.referencia,
             Paciente.apellidos, Paciente.nombres,
         )
         .outerjoin(Venta, Cobro.venta_id == Venta.id)
@@ -267,7 +298,7 @@ def reporte_cobros(
             "fecha": r.fecha.isoformat(),
             "paciente": f"{r.apellidos or ''} {r.nombres or ''}".strip() or "—",
             "monto": float(r.monto),
-            "forma_pago": r.forma_pago,
+            "forma_pago": r.metodo_pago,
             "referencia": r.referencia or "",
         }
         for r in rows
@@ -303,7 +334,7 @@ def reporte_cobros_excel(
 
     for r in rows:
         paciente = f"{r.apellidos or ''} {r.nombres or ''}".strip() or "—"
-        ws.append([r.numero, r.fecha, paciente, float(r.monto), r.forma_pago, r.referencia or ""])
+        ws.append([r.numero, r.fecha, paciente, float(r.monto), r.metodo_pago, r.referencia or ""])
 
     last = ws.max_row
     ws.append(["", "", "TOTAL", f'=SUM(D2:D{last})', "", ""])
@@ -435,3 +466,117 @@ def reporte_ordenes(
     ]
     total_lab = sum(d["precio_lab"] for d in data if d["precio_lab"])
     return {"filas": data, "total_lab": total_lab, "cantidad": len(data)}
+
+
+@router.get("/analytics")
+def analytics(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    hoy = date.today()
+    result: dict = {
+        "ventas_por_mes": [],
+        "top_productos": [],
+        "pacientes_por_origen": [],
+        "cobros_por_metodo": [],
+        "pacientes_por_mes": [],
+        "ordenes_por_estado": [],
+    }
+
+    try:
+        rows = db.execute(text("""
+            SELECT to_char(fecha, 'YYYY-MM') AS mes,
+                   SUM(total) AS total,
+                   COUNT(*) AS cantidad
+            FROM ventas
+            WHERE estado != :estado AND fecha >= :desde
+            GROUP BY to_char(fecha, 'YYYY-MM')
+            ORDER BY 1
+        """), {"estado": "anulado", "desde": hoy.replace(day=1) - timedelta(days=365)}).all()
+        result["ventas_por_mes"] = [
+            {"mes": r.mes, "total": float(r.total), "cantidad": int(r.cantidad)}
+            for r in rows
+        ]
+    except Exception:
+        db.rollback()
+
+    try:
+        rows = db.execute(
+            select(
+                VentaItem.descripcion,
+                func.sum(VentaItem.cantidad).label("cantidad"),
+                func.sum(VentaItem.subtotal).label("total"),
+            )
+            .group_by(VentaItem.descripcion)
+            .order_by(func.sum(VentaItem.subtotal).desc())
+            .limit(10)
+        ).all()
+        result["top_productos"] = [
+            {"nombre": r.descripcion, "cantidad": float(r.cantidad), "total": float(r.total)}
+            for r in rows
+        ]
+    except Exception:
+        db.rollback()
+
+    try:
+        rows = db.execute(text("""
+            SELECT COALESCE(origen, 'No especificado') AS origen,
+                   COUNT(*) AS cantidad
+            FROM pacientes
+            GROUP BY COALESCE(origen, 'No especificado')
+            ORDER BY COUNT(*) DESC
+        """)).all()
+        result["pacientes_por_origen"] = [
+            {"origen": r.origen, "cantidad": int(r.cantidad)} for r in rows
+        ]
+    except Exception:
+        db.rollback()
+
+    try:
+        rows = db.execute(
+            select(
+                Cobro.metodo_pago,
+                func.sum(Cobro.monto).label("total"),
+                func.count().label("cantidad"),
+            )
+            .where(Cobro.fecha >= hoy - timedelta(days=90))
+            .group_by(Cobro.metodo_pago)
+            .order_by(func.sum(Cobro.monto).desc())
+        ).all()
+        result["cobros_por_metodo"] = [
+            {"metodo": r.metodo_pago, "total": float(r.total), "cantidad": int(r.cantidad)}
+            for r in rows
+        ]
+    except Exception:
+        db.rollback()
+
+    try:
+        rows = db.execute(text("""
+            SELECT to_char(created_at, 'YYYY-MM') AS mes,
+                   COUNT(*) AS cantidad
+            FROM pacientes
+            WHERE created_at >= :desde
+            GROUP BY to_char(created_at, 'YYYY-MM')
+            ORDER BY 1
+        """), {"desde": hoy.replace(day=1) - timedelta(days=180)}).all()
+        result["pacientes_por_mes"] = [
+            {"mes": r.mes, "cantidad": int(r.cantidad)} for r in rows
+        ]
+    except Exception:
+        db.rollback()
+
+    try:
+        rows = db.execute(
+            select(
+                OrdenTrabajo.estado,
+                func.count().label("cantidad"),
+            )
+            .group_by(OrdenTrabajo.estado)
+        ).all()
+        result["ordenes_por_estado"] = [
+            {"estado": r.estado, "cantidad": int(r.cantidad)} for r in rows
+        ]
+    except Exception:
+        db.rollback()
+
+    return result

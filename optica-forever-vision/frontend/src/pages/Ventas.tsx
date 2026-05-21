@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
 import { useAuthStore } from "@/store/auth"
 
-interface Venta { id: number; numero: string; paciente_id: number | null; fecha: string; total: number; estado: string }
+interface Venta { id: number; numero: string; paciente_id: number | null; paciente_nombre: string | null; fecha: string; total: number; estado: string }
 
 function EstadoBadge({ estado }: { estado: string }) {
   const v = { pendiente: "secondary", anulado: "destructive", cobrado: "default" } as const
@@ -86,7 +86,7 @@ export default function Ventas() {
               <tr key={v.id} className={`hover:bg-muted/30 transition-colors ${v.estado === "anulado" ? "opacity-50" : ""}`}>
                 <td className="px-4 py-3"><Badge variant="outline">{v.numero}</Badge></td>
                 <td className="px-4 py-3 text-muted-foreground">{v.fecha}</td>
-                <td className="px-4 py-3 text-muted-foreground">{v.paciente_id ? `Pac. #${v.paciente_id}` : "Consumidor final"}</td>
+                <td className="px-4 py-3 text-muted-foreground">{v.paciente_nombre ?? (v.paciente_id ? `Pac. #${v.paciente_id}` : "Consumidor final")}</td>
                 <td className="px-4 py-3 text-right font-semibold">${Number(v.total).toFixed(2)}</td>
                 <td className="px-4 py-3"><EstadoBadge estado={v.estado} /></td>
                 <td className="px-4 py-3">
