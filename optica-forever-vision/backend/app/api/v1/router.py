@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, buscar, categorias, consultas, creditos, configuracion, cxc, ordenes, pacientes, productos, reportes, sri, tesoreria, turnos, usuarios, ventas, whatsapp
+from app.api.v1 import auth, buscar, categorias, consultas, creditos, configuracion, cxc, ordenes, pacientes, productos, proveedores, reportes, sri, tesoreria, turnos, usuarios, ventas, whatsapp
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
@@ -20,3 +20,4 @@ api_router.include_router(configuracion.router)
 api_router.include_router(cxc.router)
 api_router.include_router(sri.router)
 api_router.include_router(buscar.router)
+api_router.include_router(proveedores.router)

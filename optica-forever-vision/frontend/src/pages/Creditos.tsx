@@ -29,6 +29,7 @@ interface Credito {
 }
 interface Cuenta { id: number; nombre: string; activa: boolean }
 interface VentaPendiente { id: number; numero: string; total: number; paciente_nombre: string | null }
+interface Paciente { id: number; nombres: string; apellidos: string; cedula: string }
 
 type CreditoForm = { paciente_id: string; venta_id: string; monto_total: string; numero_cuotas: string; periodicidad: string; fecha_inicio: string; notas: string }
 type PagoForm = { monto: string; fecha_pago: string; cuenta_bancaria_id: string; metodo_pago: string; referencia: string }
@@ -91,6 +92,9 @@ export default function Creditos() {
   const [busqVenta, setBusqVenta] = useState("")
   const [ventaSel, setVentaSel] = useState<VentaPendiente | null>(null)
   const [showVentaList, setShowVentaList] = useState(false)
+  const [busqPaciente, setBusqPaciente] = useState("")
+  const [pacienteSel, setPacienteSel] = useState<Paciente | null>(null)
+  const [showPacList, setShowPacList] = useState(false)
   const qc = useQueryClient()
   const rol = useAuthStore((s) => s.user?.role)
   const hoy = new Date().toISOString().slice(0, 10)
@@ -117,13 +121,19 @@ export default function Creditos() {
     enabled: dialogNuevo,
   })
 
+  const { data: pacientes = [] } = useQuery<Paciente[]>({
+    queryKey: ["pacientes-mini"],
+    queryFn: () => api.get("/pacientes", { params: { limit: 500 } }).then(r => r.data),
+    enabled: dialogNuevo,
+  })
+
   const { register: rN, handleSubmit: hsN, reset: resetN, setValue: svN } = useForm<CreditoForm>()
   const { register: rP, handleSubmit: hsP, reset: resetP } = useForm<PagoForm>()
 
   const crearMut = useMutation({
     mutationFn: (d: CreditoForm) => api.post("/creditos", {
-      paciente_id: ventaSel?.id ? undefined : (d.paciente_id ? Number(d.paciente_id) : null),
-      venta_id: ventaSel ? ventaSel.id : (d.venta_id ? Number(d.venta_id) : null),
+      paciente_id: ventaSel ? undefined : (pacienteSel ? pacienteSel.id : null),
+      venta_id: ventaSel ? ventaSel.id : null,
       monto_total: Number(d.monto_total),
       numero_cuotas: Number(d.numero_cuotas),
       periodicidad: d.periodicidad,
@@ -157,7 +167,9 @@ export default function Creditos() {
 
   function abrirNuevo() {
     resetN({ fecha_inicio: hoy, periodicidad: "mensual", numero_cuotas: "3" })
-    setVentaSel(null); setBusqVenta(""); setDialogNuevo(true)
+    setVentaSel(null); setBusqVenta("")
+    setPacienteSel(null); setBusqPaciente("")
+    setDialogNuevo(true)
   }
 
   function abrirPago(credito: Credito, cuota: Cuota) {
@@ -355,8 +367,48 @@ export default function Creditos() {
             </div>
             {!ventaSel && (
               <div className="space-y-1">
-                <Label>ID de paciente (opcional)</Label>
-                <Input type="number" placeholder="Dejar vacío si no es paciente registrado" {...rN("paciente_id")} />
+                <Label>Paciente (opcional)</Label>
+                {pacienteSel ? (
+                  <div className="flex items-center justify-between bg-muted/30 rounded px-3 py-2 text-sm">
+                    <span className="font-medium">{pacienteSel.apellidos} {pacienteSel.nombres}</span>
+                    <span className="text-muted-foreground ml-2 text-xs">{pacienteSel.cedula}</span>
+                    <button type="button" onClick={() => setPacienteSel(null)} className="ml-auto text-muted-foreground hover:text-foreground">×</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Input
+                      placeholder="Buscar por nombre o cédula..."
+                      value={busqPaciente}
+                      onChange={e => { setBusqPaciente(e.target.value); setShowPacList(true) }}
+                      onFocus={() => setShowPacList(true)}
+                      onBlur={() => setTimeout(() => setShowPacList(false), 150)}
+                    />
+                    {showPacList && busqPaciente.length >= 2 && (
+                      <div className="absolute z-20 w-full mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-auto">
+                        {pacientes
+                          .filter(p => {
+                            const q = busqPaciente.toLowerCase()
+                            return (p.nombres ?? "").toLowerCase().includes(q) || (p.apellidos ?? "").toLowerCase().includes(q) || (p.cedula ?? "").includes(q)
+                          })
+                          .slice(0, 15)
+                          .map(p => (
+                            <button key={p.id} type="button"
+                              onMouseDown={() => { setPacienteSel(p); setBusqPaciente(""); setShowPacList(false) }}
+                              className="w-full text-left px-3 py-2 hover:bg-muted text-sm flex justify-between gap-2">
+                              <span className="font-medium">{p.apellidos} {p.nombres}</span>
+                              <span className="text-muted-foreground text-xs">{p.cedula}</span>
+                            </button>
+                          ))}
+                        {pacientes.filter(p => {
+                          const q = busqPaciente.toLowerCase()
+                          return (p.nombres ?? "").toLowerCase().includes(q) || (p.apellidos ?? "").toLowerCase().includes(q) || (p.cedula ?? "").includes(q)
+                        }).length === 0 && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">Sin resultados</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">

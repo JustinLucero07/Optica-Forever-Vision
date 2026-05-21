@@ -84,6 +84,12 @@ class CuentaPorPagar(Base):
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="pendiente")
     referencia: Mapped[str | None] = mapped_column(String(100), nullable=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proveedor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("proveedores.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    orden_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ordenes_trabajo.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )

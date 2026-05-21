@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_roles
 from app.core.db import get_db
 from app.core.numeradores import siguiente_numero
+from app.models.cxp_item import CxPItem
 from app.models.tesoreria import CuentaBancaria, Cobro, CuentaPorPagar, Egreso
 from app.models.venta import Venta
 from app.models.user import User
@@ -170,6 +171,21 @@ def crear_cxp(
     return cxp
 
 
+@router.delete("/cxp/{cid}", status_code=204)
+def eliminar_cxp(
+    cid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    cxp = db.get(CuentaPorPagar, cid)
+    if not cxp:
+        raise HTTPException(status_code=404, detail="CxP no encontrada")
+    if float(cxp.monto_pagado) > 0:
+        raise HTTPException(status_code=422, detail="No se puede eliminar una CxP con pagos registrados")
+    db.delete(cxp)
+    db.commit()
+
+
 @router.post("/cxp/{cid}/pago", response_model=CxPOut)
 def registrar_pago_cxp(
     cid: int,
@@ -224,3 +240,47 @@ def registrar_pago_cxp(
     db.commit()
     db.refresh(cxp)
     return cxp
+
+
+@router.get("/cxp/{cid}/items")
+def listar_items_cxp(
+    cid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    cxp = db.get(CuentaPorPagar, cid)
+    if not cxp:
+        raise HTTPException(status_code=404, detail="CxP no encontrada")
+    items = db.execute(
+        select(CxPItem).where(CxPItem.cxp_id == cid).order_by(CxPItem.id)
+    ).scalars().all()
+    return [
+        {
+            "id": it.id,
+            "codigo_proveedor": it.codigo_proveedor,
+            "descripcion": it.descripcion,
+            "cantidad": float(it.cantidad),
+            "precio_unitario": float(it.precio_unitario),
+            "subtotal": float(it.subtotal),
+            "producto_id": it.producto_id,
+        }
+        for it in items
+    ]
+
+
+@router.post("/cxp/{cid}/items/{item_id}/vincular")
+def vincular_item_producto(
+    cid: int,
+    item_id: int,
+    producto_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "cajero")),
+):
+    item = db.execute(
+        select(CxPItem).where(CxPItem.id == item_id, CxPItem.cxp_id == cid)
+    ).scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Ítem no encontrado")
+    item.producto_id = producto_id
+    db.commit()
+    return {"ok": True}

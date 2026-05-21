@@ -48,6 +48,9 @@ class OrdenTrabajo(Base):
     venta_id: Mapped[int | None] = mapped_column(
         ForeignKey("ventas.id", ondelete="SET NULL"), nullable=True
     )
+    proveedor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("proveedores.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     lab_proveedor: Mapped[str] = mapped_column(String(150), nullable=False)
     lab_telefono: Mapped[str | None] = mapped_column(String(30), nullable=True)
     fecha_envio: Mapped[date] = mapped_column(Date, nullable=False)

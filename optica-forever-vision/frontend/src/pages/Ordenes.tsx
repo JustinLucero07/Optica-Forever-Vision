@@ -16,12 +16,15 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
 
+interface Proveedor { id: number; nombre: string; tipo: string; telefono: string | null; ruc: string | null }
+
 interface Orden {
   id: number
   numero: string
   paciente_id: number
   consulta_id: number | null
   venta_id: number | null
+  proveedor_id: number | null
   lab_proveedor: string
   lab_telefono: string | null
   fecha_envio: string
@@ -37,6 +40,7 @@ interface Orden {
 }
 
 interface Paciente { id: number; nombres: string; apellidos: string; cedula: string; telefono: string | null }
+
 
 const ESTADOS_ORDEN = ["pendiente", "enviado", "en_proceso", "listo", "entregado", "rechazado"]
 
@@ -73,6 +77,7 @@ const EMPTY_FORM = {
   paciente_id: "",
   consulta_id: "",
   venta_id: "",
+  proveedor_id: "",
   lab_proveedor: "",
   lab_telefono: "",
   fecha_envio: toISO(new Date()),
@@ -357,6 +362,11 @@ export default function Ordenes() {
     queryFn: () => api.get("/pacientes", { params: { limit: 500 } }).then(r => r.data),
   })
 
+  const { data: proveedores = [] } = useQuery<Proveedor[]>({
+    queryKey: ["proveedores"],
+    queryFn: () => api.get("/proveedores", { params: { activo: true } }).then(r => r.data),
+  })
+
   const estadoMut = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
       api.patch(`/ordenes/${id}/estado`, null, { params: { estado } }),
@@ -385,6 +395,7 @@ export default function Ordenes() {
       paciente_id: o.paciente_id.toString(),
       consulta_id: o.consulta_id?.toString() ?? "",
       venta_id: o.venta_id?.toString() ?? "",
+      proveedor_id: o.proveedor_id?.toString() ?? "",
       lab_proveedor: o.lab_proveedor,
       lab_telefono: o.lab_telefono ?? "",
       fecha_envio: o.fecha_envio,
@@ -395,6 +406,16 @@ export default function Ordenes() {
       notas: o.notas ?? "",
     })
     setOpenForm(true)
+  }
+
+  function handleProveedorChange(pid: string) {
+    const p = proveedores.find(p => p.id === Number(pid))
+    setForm(f => ({
+      ...f,
+      proveedor_id: pid,
+      lab_proveedor: p ? p.nombre : f.lab_proveedor,
+      lab_telefono: p?.telefono ?? f.lab_telefono,
+    }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -409,6 +430,7 @@ export default function Ordenes() {
         paciente_id: Number(form.paciente_id),
         consulta_id: form.consulta_id ? Number(form.consulta_id) : null,
         venta_id: form.venta_id ? Number(form.venta_id) : null,
+        proveedor_id: form.proveedor_id ? Number(form.proveedor_id) : null,
         lab_proveedor: form.lab_proveedor,
         lab_telefono: form.lab_telefono || null,
         fecha_envio: form.fecha_envio,
@@ -613,9 +635,23 @@ export default function Ordenes() {
               </select>
             </div>
 
+            <div>
+              <label className="text-sm font-medium">Proveedor del sistema</label>
+              <select
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                value={form.proveedor_id}
+                onChange={e => handleProveedorChange(e.target.value)}
+              >
+                <option value="">— Sin vincular / texto libre —</option>
+                {proveedores.map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre} {p.ruc ? `(${p.ruc})` : ""}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium">Laboratorio / Proveedor *</label>
+                <label className="text-sm font-medium">Laboratorio / Nombre en orden *</label>
                 <Input
                   value={form.lab_proveedor}
                   onChange={e => setForm(f => ({ ...f, lab_proveedor: e.target.value }))}

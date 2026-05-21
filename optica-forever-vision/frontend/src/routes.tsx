@@ -21,6 +21,7 @@ import Reportes from "@/pages/Reportes"
 import Usuarios from "@/pages/Usuarios"
 import Configuracion from "@/pages/Configuracion"
 import SRIImport from "@/pages/SRIImport"
+import Proveedores from "@/pages/Proveedores"
 import { useAuthStore } from "@/store/auth"
 
 function RequireAuth() {
@@ -85,6 +86,7 @@ export const router = createBrowserRouter([
           { path: "usuarios", element: <Usuarios /> },
           { path: "configuracion", element: <Configuracion /> },
           { path: "sri-import", element: <SRIImport /> },
+          { path: "proveedores", element: <Proveedores /> },
 
           { path: "*", element: <Navigate to="/" replace /> },
         ],

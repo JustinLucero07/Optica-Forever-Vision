@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X } from "lucide-react"
+import { Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2 } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,8 @@ interface Cuenta { id: number; nombre: string; tipo: string; saldo_actual: numbe
 interface Cobro { id: number; numero: string; fecha: string; concepto: string; monto: number; metodo_pago: string; venta_id: number | null }
 interface Egreso { id: number; numero: string; fecha: string; categoria: string; concepto: string; monto: number; metodo_pago: string }
 interface CxP { id: number; proveedor: string; concepto: string; monto_total: number; monto_pagado: number; fecha_emision: string; fecha_vencimiento: string | null; estado: string }
+interface CxPItem { id: number; codigo_proveedor: string | null; descripcion: string; cantidad: number; precio_unitario: number; subtotal: number; producto_id: number | null }
+interface ProductoMin { id: number; nombre: string; codigo: string | null }
 interface VentaPendiente { id: number; numero: string; total: number; estado: string; paciente_nombre: string | null; fecha: string }
 
 type CobroForm = { cuenta_bancaria_id: string; fecha: string; concepto: string; monto: string; metodo_pago: string; referencia: string; notas: string }
@@ -47,6 +49,10 @@ export default function Cobros() {
   const [dialogEgreso, setDialogEgreso] = useState(false)
   const [dialogCxP, setDialogCxP] = useState(false)
   const [pagandoCxP, setPagandoCxP] = useState<CxP | null>(null)
+  const [expandedCxP, setExpandedCxP] = useState<number | null>(null)
+  const [dialogNuevoProd, setDialogNuevoProd] = useState<CxPItem | null>(null)
+  const [nuevoProdNombre, setNuevoProdNombre] = useState("")
+  const [nuevoProdCodigo, setNuevoProdCodigo] = useState("")
 
   // venta selection state for cobro dialog
   const [ventaSel, setVentaSel] = useState<VentaPendiente | null>(null)
@@ -76,6 +82,18 @@ export default function Cobros() {
   const { data: cxps = [], isLoading: cargCxP } = useQuery<CxP[]>({
     queryKey: ["cxp"],
     queryFn: () => api.get("/cxp").then(r => r.data),
+    enabled: tab === "cxp",
+  })
+
+  const { data: cxpItems = [] } = useQuery<CxPItem[]>({
+    queryKey: ["cxp-items", expandedCxP],
+    queryFn: () => api.get(`/cxp/${expandedCxP}/items`).then(r => r.data),
+    enabled: !!expandedCxP,
+  })
+
+  const { data: productosMin = [] } = useQuery<ProductoMin[]>({
+    queryKey: ["productos-mini"],
+    queryFn: () => api.get("/productos", { params: { limit: 500 } }).then(r => r.data),
     enabled: tab === "cxp",
   })
 
@@ -154,6 +172,12 @@ export default function Cobros() {
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cxp"] }); qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] }); setPagandoCxP(null); toast.success("Pago registrado") },
     onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+  })
+
+  const eliminarCxPMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/cxp/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cxp"] }); toast.success("CxP eliminada") },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "No se puede eliminar"),
   })
 
   const hoy = new Date().toISOString().slice(0, 10)
@@ -335,42 +359,111 @@ export default function Cobros() {
               <Button size="sm" onClick={abrirCxP}><Plus className="h-4 w-4 mr-1" /> Nueva CxP</Button>
             )}
           </div>
-          <div className="rounded-md border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium">Proveedor</th>
-                  <th className="text-left px-4 py-3 font-medium">Concepto</th>
-                  <th className="text-left px-4 py-3 font-medium">Emisión</th>
-                  <th className="text-left px-4 py-3 font-medium">Vencimiento</th>
-                  <th className="text-right px-4 py-3 font-medium">Total</th>
-                  <th className="text-right px-4 py-3 font-medium">Pendiente</th>
-                  <th className="text-left px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {cargCxP && <tr><td colSpan={8} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>}
-                {!cargCxP && cxps.length === 0 && <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">No hay cuentas por pagar</td></tr>}
-                {cxps.map(c => (
-                  <tr key={c.id} className={`hover:bg-muted/30 ${c.estado === "pagado" ? "opacity-60" : ""}`}>
-                    <td className="px-4 py-3 font-medium">{c.proveedor}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.concepto}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.fecha_emision}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.fecha_vencimiento ?? "—"}</td>
-                    <td className="px-4 py-3 text-right">{fmt(c.monto_total)}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-red-600">{fmt(c.monto_total - c.monto_pagado)}</td>
-                    <td className="px-4 py-3"><EstadoBadge estado={c.estado} /></td>
-                    <td className="px-4 py-3">
-                      {c.estado !== "pagado" && (rol === "admin" || rol === "cajero") && (
-                        <Button variant="outline" size="sm" onClick={() => abrirPago(c)}>Pagar</Button>
-                      )}
-                    </td>
+
+          {cargCxP && <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
+          {!cargCxP && cxps.length === 0 && <p className="text-center py-10 text-muted-foreground">No hay cuentas por pagar</p>}
+
+          {/* Desktop table */}
+          {!cargCxP && cxps.length > 0 && (
+            <div className="hidden md:block rounded-md border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="w-8 px-2 py-3" />
+                    <th className="text-left px-4 py-3 font-medium">Proveedor</th>
+                    <th className="text-left px-4 py-3 font-medium">Concepto</th>
+                    <th className="text-left px-4 py-3 font-medium">Emisión</th>
+                    <th className="text-left px-4 py-3 font-medium">Vencimiento</th>
+                    <th className="text-right px-4 py-3 font-medium">Total</th>
+                    <th className="text-right px-4 py-3 font-medium">Pendiente</th>
+                    <th className="text-left px-4 py-3 font-medium">Estado</th>
+                    <th className="px-4 py-3" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y">
+                  {cxps.map(c => (
+                    <>
+                      <tr key={c.id} className={`hover:bg-muted/30 ${c.estado === "pagado" ? "opacity-60" : ""}`}>
+                        <td className="px-2 py-3">
+                          <button onClick={() => setExpandedCxP(expandedCxP === c.id ? null : c.id)}
+                            className="text-muted-foreground hover:text-foreground p-0.5">
+                            {expandedCxP === c.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 font-medium max-w-[200px] truncate">{c.proveedor}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{c.concepto}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{c.fecha_emision}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{c.fecha_vencimiento ?? "—"}</td>
+                        <td className="px-4 py-3 text-right">{fmt(c.monto_total)}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-red-600">{fmt(c.monto_total - c.monto_pagado)}</td>
+                        <td className="px-4 py-3"><EstadoBadge estado={c.estado} /></td>
+                        <td className="px-4 py-3">
+                          <CxPAcciones c={c} rol={rol} onPagar={() => abrirPago(c)} onEliminar={() => eliminarCxPMut.mutate(c.id)} />
+                        </td>
+                      </tr>
+                      {expandedCxP === c.id && (
+                        <tr key={`items-${c.id}`} className="bg-muted/20">
+                          <td colSpan={9} className="px-6 py-3">
+                            <CxPItemsPanel items={cxpItems} productos={productosMin}
+                              onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setDialogNuevoProd(it) }} />
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Mobile cards */}
+          {!cargCxP && cxps.length > 0 && (
+            <div className="md:hidden space-y-3">
+              {cxps.map(c => (
+                <div key={c.id} className={`border rounded-lg bg-card overflow-hidden ${c.estado === "pagado" ? "opacity-70" : ""}`}>
+                  <div className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{c.proveedor}</p>
+                        <p className="text-xs text-muted-foreground truncate">{c.concepto}</p>
+                      </div>
+                      <EstadoBadge estado={c.estado} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total</p>
+                        <p className="font-medium">{fmt(c.monto_total)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Pendiente</p>
+                        <p className="font-semibold text-red-600">{fmt(c.monto_total - c.monto_pagado)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Emisión</p>
+                        <p className="text-xs">{c.fecha_emision}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button onClick={() => setExpandedCxP(expandedCxP === c.id ? null : c.id)}
+                        className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground">
+                        {expandedCxP === c.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        Ver ítems
+                      </button>
+                      <div className="ml-auto">
+                        <CxPAcciones c={c} rol={rol} onPagar={() => abrirPago(c)} onEliminar={() => eliminarCxPMut.mutate(c.id)} />
+                      </div>
+                    </div>
+                  </div>
+                  {expandedCxP === c.id && (
+                    <div className="border-t bg-muted/20 px-4 py-3">
+                      <CxPItemsPanel items={cxpItems} productos={productosMin}
+                        onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setDialogNuevoProd(it) }} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -649,6 +742,157 @@ export default function Cobros() {
           </DialogFooter>
         </form>
       </Dialog>
+
+      {/* Dialog crear producto desde ítem CxP */}
+      <Dialog open={!!dialogNuevoProd} onClose={() => setDialogNuevoProd(null)} className="max-w-md">
+        <DialogHeader onClose={() => setDialogNuevoProd(null)}>Crear producto en inventario</DialogHeader>
+        <DialogBody className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Se creará el producto y se vinculará al ítem de esta factura. La próxima vez que llegue el mismo código del proveedor se detectará automáticamente.
+          </p>
+          <div className="space-y-1">
+            <Label>Nombre del producto *</Label>
+            <Input value={nuevoProdNombre} onChange={e => setNuevoProdNombre(e.target.value)} placeholder="Nombre en tu inventario..." />
+          </div>
+          <div className="space-y-1">
+            <Label>Código interno</Label>
+            <Input value={nuevoProdCodigo} onChange={e => setNuevoProdCodigo(e.target.value)} placeholder="Ej: ARM-001" />
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setDialogNuevoProd(null)}>Cancelar</Button>
+          <Button
+            type="button"
+            disabled={!nuevoProdNombre.trim()}
+            onClick={async () => {
+              if (!dialogNuevoProd || !nuevoProdNombre.trim()) return
+              try {
+                const res = await api.post("/productos", {
+                  nombre: nuevoProdNombre.trim(),
+                  codigo: nuevoProdCodigo.trim() || null,
+                  precio_costo: 0, precio_venta: 0, stock_actual: 0, stock_minimo: 0, unidad: "unidad",
+                })
+                const prod = res.data
+                // vincular ítem al producto
+                await api.post(`/cxp/${expandedCxP}/items/${dialogNuevoProd.id}/vincular`, null, { params: { producto_id: prod.id } })
+                // guardar mapeo SRI
+                if (dialogNuevoProd.codigo_proveedor) {
+                  await api.post("/sri/mapear-items", { mapeos: [{ codigo_proveedor: dialogNuevoProd.codigo_proveedor, descripcion_proveedor: dialogNuevoProd.descripcion, producto_id: prod.id, proveedor_id: null }] })
+                }
+                toast.success(`Producto "${prod.nombre}" creado y vinculado`)
+                qc.invalidateQueries({ queryKey: ["cxp-items", expandedCxP] })
+                qc.invalidateQueries({ queryKey: ["productos-mini"] })
+                setDialogNuevoProd(null)
+              } catch (e: any) {
+                toast.error(e?.response?.data?.detail ?? "Error al crear producto")
+              }
+            }}
+          >
+            Crear y vincular
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </div>
+  )
+}
+
+function CxPAcciones({ c, rol, onPagar, onEliminar }: {
+  c: CxP; rol: string | undefined
+  onPagar: () => void; onEliminar: () => void
+}) {
+  return (
+    <div className="flex gap-1 items-center">
+      {c.estado !== "pagado" && (rol === "admin" || rol === "cajero") && (
+        <Button variant="outline" size="sm" onClick={onPagar}>Pagar</Button>
+      )}
+      {rol === "admin" && c.monto_pagado === 0 && (
+        <button
+          onClick={() => { if (confirm(`¿Eliminar CxP de ${c.proveedor}?`)) onEliminar() }}
+          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+          title="Eliminar"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+function CxPItemsPanel({ items, productos, onCrearProd }: {
+  items: CxPItem[]
+  productos: ProductoMin[]
+  onCrearProd: (it: CxPItem) => void
+}) {
+  if (items.length === 0) {
+    return <p className="text-xs text-muted-foreground italic">Sin ítems (factura ingresada manualmente).</p>
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ítems de la factura</p>
+      {/* Mobile: list */}
+      <div className="md:hidden space-y-2">
+        {items.map(it => {
+          const prod = productos.find(p => p.id === it.producto_id)
+          return (
+            <div key={it.id} className="text-xs border rounded p-2 space-y-1">
+              <div className="flex items-start justify-between gap-1">
+                <div>
+                  {it.codigo_proveedor && <span className="font-mono text-muted-foreground mr-1">[{it.codigo_proveedor}]</span>}
+                  <span>{it.descripcion}</span>
+                </div>
+                <span className="font-medium shrink-0">{fmt(it.subtotal)}</span>
+              </div>
+              <div className="text-muted-foreground">Cant: {it.cantidad} × {fmt(it.precio_unitario)}</div>
+              {prod ? (
+                <span className="inline-flex items-center gap-1 text-green-700"><Link2 className="h-3 w-3" />{prod.nombre}</span>
+              ) : (
+                <button onClick={() => onCrearProd(it)} className="inline-flex items-center gap-1 text-amber-600 underline">
+                  <PackagePlus className="h-3 w-3" />Crear producto
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {/* Desktop: table */}
+      <table className="hidden md:table w-full text-xs">
+        <thead>
+          <tr className="text-muted-foreground">
+            <th className="text-left py-1 pr-3">Código prov.</th>
+            <th className="text-left py-1 pr-3">Descripción</th>
+            <th className="text-right py-1 pr-3">Cant.</th>
+            <th className="text-right py-1 pr-3">P.Unit.</th>
+            <th className="text-right py-1 pr-3">Subtotal</th>
+            <th className="text-left py-1">Producto inventario</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-muted">
+          {items.map(it => {
+            const prod = productos.find(p => p.id === it.producto_id)
+            return (
+              <tr key={it.id}>
+                <td className="py-1.5 pr-3 font-mono text-muted-foreground">{it.codigo_proveedor ?? "—"}</td>
+                <td className="py-1.5 pr-3">{it.descripcion}</td>
+                <td className="py-1.5 pr-3 text-right">{it.cantidad}</td>
+                <td className="py-1.5 pr-3 text-right">{fmt(it.precio_unitario)}</td>
+                <td className="py-1.5 pr-3 text-right font-medium">{fmt(it.subtotal)}</td>
+                <td className="py-1.5">
+                  {prod ? (
+                    <span className="inline-flex items-center gap-1 text-green-700">
+                      <Link2 className="h-3 w-3" />{prod.nombre}{prod.codigo ? ` [${prod.codigo}]` : ""}
+                    </span>
+                  ) : (
+                    <button onClick={() => onCrearProd(it)}
+                      className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-800 underline">
+                      <PackagePlus className="h-3 w-3" />Crear producto
+                    </button>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

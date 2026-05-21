@@ -61,6 +61,7 @@ class OrdenCreate(BaseModel):
     paciente_id: int
     consulta_id: int | None = None
     venta_id: int | None = None
+    proveedor_id: int | None = None
     lab_proveedor: str
     lab_telefono: str | None = None
     fecha_envio: date
@@ -72,6 +73,7 @@ class OrdenCreate(BaseModel):
 
 
 class OrdenUpdate(BaseModel):
+    proveedor_id: int | None = None
     lab_proveedor: str | None = None
     lab_telefono: str | None = None
     fecha_entrega_est: date | None = None
@@ -88,6 +90,7 @@ class OrdenOut(BaseModel):
     paciente_id: int
     consulta_id: int | None
     venta_id: int | None
+    proveedor_id: int | None
     lab_proveedor: str
     lab_telefono: str | None
     fecha_envio: date

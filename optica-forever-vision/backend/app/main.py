@@ -143,6 +143,50 @@ def _run_cuotas_job() -> None:
         db.close()
 
 
+def _run_turnos_job() -> None:
+    """Envía recordatorio WhatsApp a pacientes con turno mañana."""
+    from sqlalchemy import select
+    from app.core.db import SessionLocal
+    from app.models.agenda import Turno
+    from app.models.paciente import Paciente
+    from app.services import whatsapp
+
+    manana = date.today() + timedelta(days=1)
+    db = SessionLocal()
+    try:
+        turnos = db.execute(
+            select(Turno).where(
+                Turno.fecha == manana,
+                Turno.estado.in_(["pendiente", "confirmado"]),
+                Turno.paciente_id.isnot(None),
+            )
+        ).scalars().all()
+
+        enviados = 0
+        for t in turnos:
+            paciente = db.get(Paciente, t.paciente_id)
+            if not paciente or not paciente.telefono:
+                continue
+            try:
+                hora_str = t.hora_inicio.strftime("%H:%M")
+                texto = (
+                    f"Hola {paciente.nombres} 👋, le recordamos su *turno* en "
+                    f"Óptica Forever Vision mañana *{manana.strftime('%d/%m/%Y')}* "
+                    f"a las *{hora_str}*.\n"
+                    f"Motivo: {t.motivo}\n\n"
+                    f"Av. 24 de mayo y Puyo, Cuenca. Si necesita reagendar escríbanos."
+                )
+                whatsapp.send_text(paciente.telefono, texto)
+                enviados += 1
+                logger.info("Recordatorio turno enviado a %s %s", paciente.nombres, paciente.apellidos)
+            except Exception as exc:
+                logger.error("Error recordatorio turno %s: %s", t.id, exc)
+
+        logger.info("Cron turnos: %d recordatorio(s) enviados para %s", enviados, manana)
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def startup_scheduler() -> None:
     try:
@@ -162,9 +206,15 @@ def startup_scheduler() -> None:
             id="recordatorio_cuotas",
             replace_existing=True,
         )
+        scheduler.add_job(
+            _run_turnos_job,
+            CronTrigger(hour=7, minute=0),
+            id="recordatorio_turnos",
+            replace_existing=True,
+        )
         scheduler.start()
         app.state.scheduler = scheduler
-        logger.info("APScheduler iniciado — cumpleaños 09:00, cuotas 08:30")
+        logger.info("APScheduler iniciado — cumpleaños 09:00, cuotas 08:30, turnos 07:00")
     except ImportError:
         logger.warning("APScheduler no instalado — crons deshabilitados")
 

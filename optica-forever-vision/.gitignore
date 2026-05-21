@@ -15,6 +15,7 @@ dist/
 # Env
 .env
 .env.local
+.env.prod
 
 # Editor
 .vscode/
