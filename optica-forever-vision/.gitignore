@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
+*/venv/
 venv/
 .pytest_cache/
 .ruff_cache/
@@ -11,6 +11,9 @@ venv/
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js
 
 # Env
 .env

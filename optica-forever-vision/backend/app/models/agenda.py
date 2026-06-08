@@ -2,7 +2,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, Time, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 
@@ -67,3 +67,11 @@ class OrdenTrabajo(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    paciente = relationship("Paciente", foreign_keys=[paciente_id], lazy="joined")
+
+    @property
+    def paciente_nombre(self) -> str | None:
+        if self.paciente:
+            return f"{self.paciente.apellidos} {self.paciente.nombres}"
+        return None

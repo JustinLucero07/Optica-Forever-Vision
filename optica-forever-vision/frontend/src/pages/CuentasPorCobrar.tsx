@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Paginador } from "@/components/ui/Paginador"
 import { useQuery } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import { Loader2, AlertCircle, Phone } from "lucide-react"
@@ -111,6 +112,8 @@ export default function CuentasPorCobrar() {
   const navigate = useNavigate()
   const [bucketFilter, setBucketFilter] = useState<BucketFilter>("")
   const [search, setSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(20)
 
   const { data, isLoading, isError } = useQuery<AgingResponse>({
     queryKey: ["cxc-aging"],
@@ -214,7 +217,7 @@ export default function CuentasPorCobrar() {
           <div className="flex flex-col sm:flex-row gap-3">
             <select
               value={bucketFilter}
-              onChange={(e) => setBucketFilter(e.target.value as BucketFilter)}
+              onChange={(e) => { setPage(1); setBucketFilter(e.target.value as BucketFilter) }}
               className="border rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">Todas las cuotas</option>
@@ -229,7 +232,7 @@ export default function CuentasPorCobrar() {
               type="text"
               placeholder="Buscar por paciente..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setPage(1); setSearch(e.target.value) }}
               className="border rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary flex-1 max-w-xs"
             />
 
@@ -244,18 +247,18 @@ export default function CuentasPorCobrar() {
           </div>
 
           {/* Table */}
-          <div className="rounded-xl border bg-card overflow-x-auto">
+          <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/40">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Paciente</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Crédito</th>
-                  <th className="text-center px-4 py-3 font-medium text-muted-foreground">Cuota N°</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Vencimiento</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Días vencido</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Saldo</th>
-                  <th className="text-center px-4 py-3 font-medium text-muted-foreground">Estado</th>
-                  <th className="text-center px-4 py-3 font-medium text-muted-foreground">Acción</th>
+                  <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Paciente</th>
+                  <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Crédito</th>
+                  <th className="text-center px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Cuota N°</th>
+                  <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Vencimiento</th>
+                  <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Días vencido</th>
+                  <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Saldo</th>
+                  <th className="text-center px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Estado</th>
+                  <th className="text-center px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,14 +269,15 @@ export default function CuentasPorCobrar() {
                     </td>
                   </tr>
                 )}
-                {filtered.map((cuota) => {
+                {filtered.slice((page - 1) * perPage, page * perPage).map((cuota, i) => {
                   const isOverdue = cuota.dias_vencido > 0
                   return (
                     <tr
                       key={cuota.cuota_id}
-                      className={`border-b last:border-0 transition-colors ${
+                      className={`border-b last:border-0 transition-colors table-row-anim ${
                         isOverdue ? "bg-red-50 hover:bg-red-100/70" : "hover:bg-muted/30"
                       }`}
+                      style={{ animationDelay: `${i * 25}ms` }}
                     >
                       <td className="px-4 py-3">
                         <p className="font-medium">{cuota.paciente_nombre}</p>
@@ -328,6 +332,7 @@ export default function CuentasPorCobrar() {
                 })}
               </tbody>
             </table>
+            <Paginador page={page} total={filtered.length} perPage={perPage} onChange={setPage} onPerPageChange={n => { setPerPage(n); setPage(1) }} />
           </div>
 
           <p className="text-xs text-muted-foreground text-right">

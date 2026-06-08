@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { useForm } from "react-hook-form"
+import { useForm, type UseFormRegisterReturn } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2 } from "lucide-react"
+import { type LucideIcon, Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2 } from "lucide-react"
 
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
+import { Paginador } from "@/components/ui/Paginador"
 import { useAuthStore } from "@/store/auth"
 
 const METODOS = ["efectivo", "transferencia", "tarjeta_debito", "tarjeta_credito", "cheque", "deposito"]
@@ -45,6 +47,10 @@ export default function Cobros() {
   const [tab, setTab] = useState<Tab>("cobros")
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
+  const [pageCobros, setPageCobros] = useState(1)
+  const [pageEgresos, setPageEgresos] = useState(1)
+  const [pageCxP, setPageCxP] = useState(1)
+  const [perPage, setPerPage] = useState(20)
   const [dialogCobro, setDialogCobro] = useState(false)
   const [dialogEgreso, setDialogEgreso] = useState(false)
   const [dialogCxP, setDialogCxP] = useState(false)
@@ -70,13 +76,11 @@ export default function Cobros() {
   const { data: cobros = [], isLoading: cargCobros } = useQuery<Cobro[]>({
     queryKey: ["cobros", desde, hasta],
     queryFn: () => api.get("/cobros", { params: { desde: desde || undefined, hasta: hasta || undefined } }).then(r => r.data),
-    enabled: tab === "cobros",
   })
 
   const { data: egresos = [], isLoading: cargEgr } = useQuery<Egreso[]>({
     queryKey: ["egresos", desde, hasta],
     queryFn: () => api.get("/egresos", { params: { desde: desde || undefined, hasta: hasta || undefined } }).then(r => r.data),
-    enabled: tab === "egresos",
   })
 
   const { data: cxps = [], isLoading: cargCxP } = useQuery<CxP[]>({
@@ -142,7 +146,7 @@ export default function Cobros() {
       setDialogCobro(false)
       toast.success("Cobro registrado")
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+    onError: (e) => toast.error(errMsg(e, "Error")),
   })
 
   const egresoMut = useMutation({
@@ -152,7 +156,7 @@ export default function Cobros() {
       metodo_pago: d.metodo_pago, referencia: d.referencia || null, notas: d.notas || null,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["egresos"] }); qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] }); setDialogEgreso(false); toast.success("Egreso registrado") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+    onError: (e) => toast.error(errMsg(e, "Error")),
   })
 
   const cxpMut = useMutation({
@@ -162,7 +166,7 @@ export default function Cobros() {
       referencia: d.referencia || null, notas: d.notas || null,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cxp"] }); setDialogCxP(false); toast.success("CxP creada") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+    onError: (e) => toast.error(errMsg(e, "Error")),
   })
 
   const pagoMut = useMutation({
@@ -171,13 +175,13 @@ export default function Cobros() {
       fecha: d.fecha, metodo_pago: d.metodo_pago, referencia: d.referencia || null,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cxp"] }); qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] }); setPagandoCxP(null); toast.success("Pago registrado") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+    onError: (e) => toast.error(errMsg(e, "Error")),
   })
 
   const eliminarCxPMut = useMutation({
     mutationFn: (id: number) => api.delete(`/cxp/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cxp"] }); toast.success("CxP eliminada") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "No se puede eliminar"),
+    onError: (e) => toast.error(errMsg(e, "No se puede eliminar")),
   })
 
   const hoy = new Date().toISOString().slice(0, 10)
@@ -186,7 +190,7 @@ export default function Cobros() {
   const totalActivos = cuentas.filter(c => c.activa).reduce((s, c) => s + c.saldo_actual, 0)
   const cxpPendiente = cxps.filter(c => c.estado !== "pagado").reduce((s, c) => s + (c.monto_total - c.monto_pagado), 0)
 
-  const TABS: { id: Tab; label: string; icon: any }[] = [
+  const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
     { id: "cobros", label: "Cobros (CxC)", icon: TrendingUp },
     { id: "egresos", label: "Egresos", icon: TrendingDown },
     { id: "cxp", label: "Cuentas x Pagar", icon: AlertCircle },
@@ -222,13 +226,13 @@ export default function Cobros() {
     return !q || v.numero.toLowerCase().includes(q) || (v.paciente_nombre ?? "").toLowerCase().includes(q)
   })
 
-  const SelectCuenta = ({ reg }: { reg: any }) => (
+  const SelectCuenta = ({ reg }: { reg: UseFormRegisterReturn }) => (
     <select {...reg} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
     </select>
   )
 
-  const SelectMetodo = ({ reg }: { reg: any }) => (
+  const SelectMetodo = ({ reg }: { reg: UseFormRegisterReturn }) => (
     <select {...reg} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {METODOS.map(m => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
     </select>
@@ -295,7 +299,7 @@ export default function Cobros() {
             <tbody className="divide-y">
               {cargCobros && <tr><td colSpan={5} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>}
               {!cargCobros && cobros.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No hay cobros en el período</td></tr>}
-              {cobros.map(c => (
+              {cobros.slice((pageCobros - 1) * perPage, pageCobros * perPage).map(c => (
                 <tr key={c.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3"><Badge variant="outline">{c.numero}</Badge></td>
                   <td className="px-4 py-3 text-muted-foreground">{c.fecha}</td>
@@ -304,14 +308,9 @@ export default function Cobros() {
                   <td className="px-4 py-3 text-right font-semibold text-green-700">{fmt(c.monto)}</td>
                 </tr>
               ))}
-              {!cargCobros && cobros.length > 0 && (
-                <tr className="bg-muted/30 font-semibold">
-                  <td colSpan={4} className="px-4 py-2 text-right text-sm">Total</td>
-                  <td className="px-4 py-2 text-right text-green-700">{fmt(totalCobros)}</td>
-                </tr>
-              )}
             </tbody>
           </table>
+          <Paginador page={pageCobros} total={cobros.length} perPage={perPage} onChange={setPageCobros} onPerPageChange={n => { setPerPage(n); setPageCobros(1) }} />
         </div>
       )}
 
@@ -331,7 +330,7 @@ export default function Cobros() {
             <tbody className="divide-y">
               {cargEgr && <tr><td colSpan={5} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>}
               {!cargEgr && egresos.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No hay egresos en el período</td></tr>}
-              {egresos.map(e => (
+              {egresos.slice((pageEgresos - 1) * perPage, pageEgresos * perPage).map(e => (
                 <tr key={e.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3"><Badge variant="outline">{e.numero}</Badge></td>
                   <td className="px-4 py-3 text-muted-foreground">{e.fecha}</td>
@@ -340,14 +339,9 @@ export default function Cobros() {
                   <td className="px-4 py-3 text-right font-semibold text-amber-700">{fmt(e.monto)}</td>
                 </tr>
               ))}
-              {!cargEgr && egresos.length > 0 && (
-                <tr className="bg-muted/30 font-semibold">
-                  <td colSpan={4} className="px-4 py-2 text-right text-sm">Total</td>
-                  <td className="px-4 py-2 text-right text-amber-700">{fmt(totalEgresos)}</td>
-                </tr>
-              )}
             </tbody>
           </table>
+          <Paginador page={pageEgresos} total={egresos.length} perPage={perPage} onChange={setPageEgresos} onPerPageChange={n => { setPerPage(n); setPageEgresos(1) }} />
         </div>
       )}
 
@@ -381,7 +375,7 @@ export default function Cobros() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {cxps.map(c => (
+                  {cxps.slice((pageCxP - 1) * perPage, pageCxP * perPage).map(c => (
                     <>
                       <tr key={c.id} className={`hover:bg-muted/30 ${c.estado === "pagado" ? "opacity-60" : ""}`}>
                         <td className="px-2 py-3">
@@ -413,13 +407,14 @@ export default function Cobros() {
                   ))}
                 </tbody>
               </table>
+              <Paginador page={pageCxP} total={cxps.length} perPage={perPage} onChange={setPageCxP} onPerPageChange={n => { setPerPage(n); setPageCxP(1) }} />
             </div>
           )}
 
           {/* Mobile cards */}
           {!cargCxP && cxps.length > 0 && (
             <div className="md:hidden space-y-3">
-              {cxps.map(c => (
+              {cxps.slice((pageCxP - 1) * perPage, pageCxP * perPage).map(c => (
                 <div key={c.id} className={`border rounded-lg bg-card overflow-hidden ${c.estado === "pagado" ? "opacity-70" : ""}`}>
                   <div className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -462,6 +457,7 @@ export default function Cobros() {
                   )}
                 </div>
               ))}
+              <Paginador page={pageCxP} total={cxps.length} perPage={perPage} onChange={setPageCxP} onPerPageChange={n => { setPerPage(n); setPageCxP(1) }} />
             </div>
           )}
         </div>
@@ -469,23 +465,26 @@ export default function Cobros() {
 
       {/* Tab: Saldos */}
       {tab === "cuentas" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {cuentas.map(c => (
-            <Card key={c.id} className={!c.activa ? "opacity-60" : ""}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center justify-between">
-                  {c.nombre}
-                  <Badge variant="outline" className="font-normal text-xs">{c.tipo}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className={`text-2xl font-bold ${c.saldo_actual < 0 ? "text-destructive" : "text-green-700"}`}>
-                  {fmt(c.saldo_actual)}
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {cuentas.map(c => (
+              <Card key={c.id} className={!c.activa ? "opacity-60" : ""}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center justify-between">
+                    {c.nombre}
+                    <Badge variant="outline" className="font-normal text-xs">{c.tipo}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className={`text-2xl font-bold ${c.saldo_actual < 0 ? "text-destructive" : "text-green-700"}`}>
+                    {fmt(c.saldo_actual)}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <ResumenDiario cobros={cobros} egresos={egresos} />
+        </>
       )}
 
       {/* Dialog Cobro */}
@@ -783,8 +782,8 @@ export default function Cobros() {
                 qc.invalidateQueries({ queryKey: ["cxp-items", expandedCxP] })
                 qc.invalidateQueries({ queryKey: ["productos-mini"] })
                 setDialogNuevoProd(null)
-              } catch (e: any) {
-                toast.error(e?.response?.data?.detail ?? "Error al crear producto")
+              } catch (e) {
+                toast.error(errMsg(e, "Error al crear producto"))
               }
             }}
           >
@@ -793,6 +792,44 @@ export default function Cobros() {
         </DialogFooter>
       </Dialog>
     </div>
+  )
+}
+
+function ResumenDiario({ cobros, egresos }: { cobros: Cobro[]; egresos: Egreso[] }) {
+  const hoy = new Date().toISOString().slice(0, 10)
+  const cobrosHoy = cobros.filter(c => c.fecha === hoy)
+  const egresosHoy = egresos.filter(e => e.fecha === hoy)
+  const totalCobrosHoy = cobrosHoy.reduce((s, c) => s + Number(c.monto), 0)
+  const totalEgresosHoy = egresosHoy.reduce((s, e) => s + Number(e.monto), 0)
+  const neto = totalCobrosHoy - totalEgresosHoy
+
+  return (
+    <Card className="mt-4">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          📊 Resumen del día — {hoy}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-xs text-muted-foreground">Cobros hoy</p>
+            <p className="text-lg font-bold text-green-600">{fmt(totalCobrosHoy)}</p>
+            <p className="text-xs text-muted-foreground">{cobrosHoy.length} transacciones</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Egresos hoy</p>
+            <p className="text-lg font-bold text-amber-600">{fmt(totalEgresosHoy)}</p>
+            <p className="text-xs text-muted-foreground">{egresosHoy.length} transacciones</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Neto del día</p>
+            <p className={`text-lg font-bold ${neto >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmt(neto)}</p>
+            <p className="text-xs text-muted-foreground">{neto >= 0 ? "↑ positivo" : "↓ negativo"}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

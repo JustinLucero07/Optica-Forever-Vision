@@ -19,7 +19,8 @@ class Credito(Base):
         ForeignKey("pacientes.id", ondelete="SET NULL"), nullable=True, index=True
     )
     monto_total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    monto_pagado: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    abono_inicial: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
+    monto_pagado: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=Decimal("0"))
     numero_cuotas: Mapped[int] = mapped_column(Integer, nullable=False)
     periodicidad: Mapped[str] = mapped_column(String(20), nullable=False, default="mensual")
     fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False)
@@ -36,6 +37,13 @@ class Credito(Base):
         "CuotaCredito", back_populates="credito", cascade="all, delete-orphan",
         order_by="CuotaCredito.numero_cuota",
     )
+    paciente = relationship("Paciente", foreign_keys=[paciente_id], lazy="joined")
+
+    @property
+    def paciente_nombre(self) -> str | None:
+        if self.paciente:
+            return f"{self.paciente.apellidos} {self.paciente.nombres}"
+        return None
 
 
 class CuotaCredito(Base):

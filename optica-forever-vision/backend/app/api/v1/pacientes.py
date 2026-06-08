@@ -1,13 +1,25 @@
+from datetime import date
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.deps import get_current_user, require_roles
 from app.core.db import get_db
 from app.core.numeradores import siguiente_numero
+from app.models.nota import PacienteNota
 from app.models.paciente import Paciente
 from app.models.user import User
 from app.schemas.pacientes import PacienteCreate, PacienteListItem, PacienteOut, PacienteUpdate
+
+
+class FotoIn(BaseModel):
+    foto: str  # base64 data-url
+
+class NotaIn(BaseModel):
+    contenido: str
 
 router = APIRouter(prefix="/pacientes", tags=["pacientes"])
 
@@ -111,3 +123,154 @@ def eliminar_paciente(
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     db.delete(p)
     db.commit()
+
+
+# ── Foto ───────────────────────────────────────────────────────────────────────
+
+@router.put("/{pid}/foto", response_model=PacienteOut)
+def guardar_foto(
+    pid: int,
+    data: FotoIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "optometrista", "vendedor")),
+):
+    p = db.get(Paciente, pid)
+    if not p:
+        raise HTTPException(404, detail="Paciente no encontrado")
+    p.foto = data.foto
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@router.delete("/{pid}/foto", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_foto(
+    pid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "optometrista")),
+):
+    p = db.get(Paciente, pid)
+    if not p:
+        raise HTTPException(404, detail="Paciente no encontrado")
+    p.foto = None
+    db.commit()
+
+
+# ── Notas internas ─────────────────────────────────────────────────────────────
+
+@router.get("/{pid}/notas")
+def listar_notas(
+    pid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    p = db.get(Paciente, pid)
+    if not p:
+        raise HTTPException(404, detail="Paciente no encontrado")
+    notas = db.execute(
+        select(PacienteNota, User)
+        .outerjoin(User, PacienteNota.usuario_id == User.id)
+        .where(PacienteNota.paciente_id == pid)
+        .order_by(PacienteNota.created_at.desc())
+    ).all()
+    return [
+        {
+            "id": n.id,
+            "contenido": n.contenido,
+            "usuario": u.full_name if u else None,
+            "created_at": n.created_at.isoformat(),
+        }
+        for n, u in notas
+    ]
+
+
+@router.post("/{pid}/notas", status_code=status.HTTP_201_CREATED)
+def agregar_nota(
+    pid: int,
+    data: NotaIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    p = db.get(Paciente, pid)
+    if not p:
+        raise HTTPException(404, detail="Paciente no encontrado")
+    nota = PacienteNota(paciente_id=pid, usuario_id=current.id, contenido=data.contenido.strip())
+    db.add(nota)
+    db.commit()
+    db.refresh(nota)
+    return {"id": nota.id, "contenido": nota.contenido, "usuario": current.full_name, "created_at": nota.created_at.isoformat()}
+
+
+@router.delete("/{pid}/notas/{nid}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_nota(
+    pid: int,
+    nid: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    nota = db.execute(
+        select(PacienteNota).where(PacienteNota.id == nid, PacienteNota.paciente_id == pid)
+    ).scalar_one_or_none()
+    if not nota:
+        raise HTTPException(404, detail="Nota no encontrada")
+    if nota.usuario_id != current.id and current.role != "admin":
+        raise HTTPException(403, detail="Solo puedes eliminar tus propias notas")
+    db.delete(nota)
+    db.commit()
+
+
+# ── Estado de cuenta ───────────────────────────────────────────────────────────
+
+@router.get("/{pid}/estado-cuenta")
+def estado_cuenta(
+    pid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.models.credito import Credito, CuotaCredito
+    from app.models.venta import Venta
+
+    p = db.get(Paciente, pid)
+    if not p:
+        raise HTTPException(404, detail="Paciente no encontrado")
+
+    # Ventas pendientes de cobro
+    ventas_pend = db.execute(
+        select(Venta).where(Venta.paciente_id == pid, Venta.estado == "pendiente")
+    ).scalars().all()
+
+    # Créditos activos con cuotas
+    creditos = db.execute(
+        select(Credito)
+        .where(Credito.paciente_id == pid, Credito.estado.in_(["vigente", "vencido"]))
+        .options(selectinload(Credito.cuotas))
+    ).scalars().all()
+
+    total_ventas = sum(float(v.total) for v in ventas_pend)
+    total_creditos = sum(
+        float(q.monto - q.monto_pagado)
+        for c in creditos
+        for q in c.cuotas
+        if q.estado in ("pendiente", "vencido")
+    )
+
+    return {
+        "total_deuda": round(total_ventas + total_creditos, 2),
+        "total_ventas_pendientes": round(total_ventas, 2),
+        "total_creditos_pendientes": round(total_creditos, 2),
+        "ventas_pendientes": [
+            {"id": v.id, "numero": v.numero, "fecha": v.fecha.isoformat(), "total": float(v.total)}
+            for v in ventas_pend
+        ],
+        "creditos_activos": [
+            {
+                "id": c.id,
+                "numero": c.numero,
+                "estado": c.estado,
+                "monto_total": float(c.monto_total),
+                "saldo": float(c.monto_total - c.monto_pagado),
+                "cuotas_vencidas": sum(1 for q in c.cuotas if q.estado == "vencido"),
+            }
+            for c in creditos
+        ],
+    }

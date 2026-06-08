@@ -1,12 +1,13 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { Search, Loader2, Stethoscope, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Loader2, Stethoscope } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Paginador } from "@/components/ui/Paginador"
 
 function fmtDate(s: string) {
   const [y, m, d] = s.slice(0, 10).split("-")
@@ -40,6 +41,8 @@ export default function Consultas() {
   const [busqueda, setBusqueda] = useState("")
   const [q, setQ] = useState("")
   const [skip, setSkip] = useState(0)
+  const [perPage, setPerPage] = useState(15)
+  const [pageLocal, setPageLocal] = useState(1)
 
   const { data: consultas = [], isLoading } = useQuery<Consulta[]>({
     queryKey: ["consultas-global", q, skip],
@@ -50,7 +53,10 @@ export default function Consultas() {
   function buscar() {
     setQ(busqueda)
     setSkip(0)
+    setPageLocal(1)
   }
+
+  const paged = consultas.slice((pageLocal - 1) * perPage, pageLocal * perPage)
 
   return (
     <div className="p-6 space-y-4">
@@ -110,7 +116,7 @@ export default function Consultas() {
                   </td>
                 </tr>
               )}
-              {consultas.map(c => (
+              {paged.map(c => (
                 <tr key={c.id} className="border-t hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3">
                     <Badge variant="outline" className="font-mono text-xs">{c.numero}</Badge>
@@ -148,28 +154,26 @@ export default function Consultas() {
       )}
 
       {/* Paginación */}
-      {(skip > 0 || consultas.length === PAGE) && (
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={skip === 0}
-            onClick={() => setSkip(s => Math.max(0, s - PAGE))}
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Mostrando {skip + 1}–{skip + consultas.length}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={consultas.length < PAGE}
-            onClick={() => setSkip(s => s + PAGE)}
-          >
-            Siguiente <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
+      <div className="rounded-md border">
+        <Paginador
+          page={pageLocal}
+          total={consultas.length}
+          perPage={perPage}
+          onChange={p => {
+            if (p * perPage > consultas.length && consultas.length === PAGE) {
+              setSkip(s => s + PAGE)
+              setPageLocal(1)
+            } else {
+              setPageLocal(p)
+            }
+          }}
+          onPerPageChange={n => { setPerPage(n); setPageLocal(1) }}
+        />
+      </div>
+      {consultas.length === PAGE && (
+        <p className="text-xs text-muted-foreground text-center">
+          Mostrando {skip + 1}–{skip + consultas.length} · hay más registros
+        </p>
       )}
     </div>
   )

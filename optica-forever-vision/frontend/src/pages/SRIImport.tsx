@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
   Upload, FileText, CheckCircle, AlertCircle, Loader2,
-  ExternalLink, Link2, Link2Off, Save, Trash2
+  ExternalLink, Link2, Save, Trash2
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -103,9 +104,7 @@ export default function SRIImport() {
       setOverrides({})
       toast.success(data.mensaje)
     },
-    onError: (e: any) => {
-      toast.error(e?.response?.data?.detail ?? "Error al procesar el XML")
-    },
+    onError: (e) => toast.error(errMsg(e, "Error al procesar el XML")),
   })
 
   const mapearMut = useMutation({
@@ -157,7 +156,6 @@ export default function SRIImport() {
     const nuevos: Array<{ codigo_proveedor: string; descripcion_proveedor: string; producto_id: number; proveedor_id: number | null }> = []
 
     resultado.items.forEach((item, idx) => {
-      const pid = overrides[idx] ?? (item.match !== "sin_match" ? item.producto_id : null)
       // Solo guardamos mapeos donde el usuario hizo una selección manual O donde había sin_match y ahora tienen override
       if (overrides[idx] && item.codigo) {
         nuevos.push({

@@ -171,7 +171,7 @@ def crear_cxp(
     return cxp
 
 
-@router.delete("/cxp/{cid}", status_code=204)
+@router.delete("/cxp/{cid}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_cxp(
     cid: int,
     db: Session = Depends(get_db),

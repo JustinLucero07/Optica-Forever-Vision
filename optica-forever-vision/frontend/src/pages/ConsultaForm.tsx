@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { useForm } from "react-hook-form"
+import { useForm, type UseFormRegister, type FieldPath } from "react-hook-form"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { ArrowLeft, Save, Loader2 } from "lucide-react"
 
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -70,7 +71,7 @@ function buildPayload(d: FormData) {
 
 const SECTIONS = ["Datos", "Agudeza Visual", "Refracción", "Exploración", "Biomicroscopía", "Diagnóstico", "Receta LC", "Contactología"]
 
-function RxGrid({ prefix, register }: { prefix: string; register: any }) {
+function RxGrid({ prefix, register }: { prefix: string; register: UseFormRegister<FormData> }) {
   return (
     <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr_1fr] gap-2 items-center text-sm">
       <div />
@@ -81,7 +82,7 @@ function RxGrid({ prefix, register }: { prefix: string; register: any }) {
         <>
           <div key={`${eye}-label`} className="font-semibold text-xs">{eye.toUpperCase()}</div>
           {["esf", "cil", "eje", "add", "av"].map(f => (
-            <Input key={f} className="h-8 text-center text-xs" placeholder={f === "eje" ? "°" : f === "av" ? "20/" : "±0.00"} {...register(`${prefix}_${eye}_${f}`)} />
+            <Input key={f} className="h-8 text-center text-xs" placeholder={f === "eje" ? "°" : f === "av" ? "20/" : "±0.00"} {...register(`${prefix}_${eye}_${f}` as FieldPath<FormData>)} />
           ))}
         </>
       ))}
@@ -108,14 +109,14 @@ export default function ConsultaForm() {
     enabled: !!consultaId,
   })
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, reset } = useForm<FormData>({
     defaultValues: { fecha: new Date().toISOString().slice(0, 10) },
   })
 
   useEffect(() => {
     if (consulta) {
-      const recLC = consulta.recetas?.find((r: any) => r.tipo === "lente_convencional")
-      const recCL = consulta.recetas?.find((r: any) => r.tipo === "contactologia")
+      const recLC = consulta.recetas?.find((r: { tipo: string }) => r.tipo === "lente_convencional")
+      const recCL = consulta.recetas?.find((r: { tipo: string }) => r.tipo === "contactologia")
       reset({
         fecha: consulta.fecha,
         motivo_consulta: consulta.motivo_consulta ?? "",
@@ -151,7 +152,7 @@ export default function ConsultaForm() {
       toast.success(esNueva ? "Consulta creada" : "Consulta actualizada")
       navigate(`/consultas/${res.data.id}`)
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al guardar"),
+    onError: (e) => toast.error(errMsg(e, "Error al guardar")),
   })
 
   const titulo = paciente ? `${paciente.apellidos}, ${paciente.nombres}` : "…"

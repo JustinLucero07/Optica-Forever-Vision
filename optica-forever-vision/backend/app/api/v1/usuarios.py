@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -51,7 +51,7 @@ def actualizar(uid: int, data: UserUpdate, db: Session = Depends(get_db), me: Us
     db.refresh(user)
     return user
 
-@router.delete("/{uid}", status_code=204)
+@router.delete("/{uid}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar(uid: int, db: Session = Depends(get_db), me: User = Depends(require_roles("admin"))):
     if uid == me.id:
         raise HTTPException(400, detail="No puedes eliminarte a ti mismo")

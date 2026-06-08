@@ -1,10 +1,14 @@
+import logging
 from datetime import date, timedelta
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import settings
 from app.core.deps import get_current_user, require_roles
 from app.core.db import get_db
 from app.core.numeradores import siguiente_numero
@@ -20,7 +24,8 @@ _DIAS = {"mensual": 30, "quincenal": 15, "semanal": 7}
 
 
 def _generar_cuotas(credito: Credito) -> list[CuotaCredito]:
-    monto_cuota = round(float(credito.monto_total) / credito.numero_cuotas, 2)
+    saldo_a_financiar = float(credito.monto_total) - float(credito.abono_inicial)
+    monto_cuota = round(saldo_a_financiar / credito.numero_cuotas, 2)
     dias = _DIAS.get(credito.periodicidad, 30)
     cuotas = []
     for i in range(credito.numero_cuotas):
@@ -35,10 +40,11 @@ def _generar_cuotas(credito: Credito) -> list[CuotaCredito]:
 
 
 def _actualizar_estado(credito: Credito) -> None:
-    pagado = sum(float(c.monto_pagado) for c in credito.cuotas)
-    credito.monto_pagado = Decimal(str(round(pagado, 2)))
+    pagado_cuotas = sum(float(c.monto_pagado) for c in credito.cuotas)
+    total_pagado = float(credito.abono_inicial) + pagado_cuotas
+    credito.monto_pagado = Decimal(str(round(total_pagado, 2)))
     total = float(credito.monto_total)
-    if pagado >= total - 0.01:
+    if total_pagado >= total - 0.01:
         credito.estado = "pagado"
     elif any(c.estado == "vencido" for c in credito.cuotas):
         credito.estado = "vencido"
@@ -69,9 +75,10 @@ def listar(
         CreditoListItem(
             id=c.id, numero=c.numero, paciente_id=c.paciente_id,
             paciente_nombre=f"{p.apellidos} {p.nombres}" if p else None,
-            venta_id=c.venta_id, monto_total=c.monto_total, monto_pagado=c.monto_pagado,
-            numero_cuotas=c.numero_cuotas, periodicidad=c.periodicidad,
-            fecha_inicio=c.fecha_inicio, estado=c.estado, created_at=c.created_at,
+            venta_id=c.venta_id, monto_total=c.monto_total, abono_inicial=c.abono_inicial,
+            monto_pagado=c.monto_pagado, numero_cuotas=c.numero_cuotas,
+            periodicidad=c.periodicidad, fecha_inicio=c.fecha_inicio,
+            estado=c.estado, created_at=c.created_at,
         )
         for c, p in rows
     ]
@@ -83,12 +90,24 @@ def crear(
     db: Session = Depends(get_db),
     current: User = Depends(require_roles("admin", "cajero", "vendedor")),
 ):
+    paciente_id = data.paciente_id
+    if not paciente_id and data.venta_id:
+        from app.models.venta import Venta
+        venta = db.get(Venta, data.venta_id)
+        if venta:
+            paciente_id = venta.paciente_id
+    if not paciente_id:
+        raise HTTPException(status_code=422, detail="Se requiere paciente_id o una venta con paciente asignado")
+
     numero = siguiente_numero(db, "numerador_credito", "CRD")
+    abono = Decimal(str(data.abono_inicial)) if data.abono_inicial else Decimal("0")
     credito = Credito(
         numero=numero,
         venta_id=data.venta_id,
-        paciente_id=data.paciente_id,
+        paciente_id=paciente_id,
         monto_total=Decimal(str(data.monto_total)),
+        abono_inicial=abono,
+        monto_pagado=abono,
         numero_cuotas=data.numero_cuotas,
         periodicidad=data.periodicidad,
         fecha_inicio=data.fecha_inicio,
@@ -182,6 +201,35 @@ def pagar_cuota(
     _actualizar_estado(credito)
     db.commit()
     db.refresh(credito)
+
+    # WhatsApp comprobante de pago al paciente
+    if credito.paciente_id:
+        try:
+            from app.services import whatsapp
+            pac = db.get(Paciente, credito.paciente_id)
+            if pac and pac.telefono:
+                saldo_pendiente = sum(
+                    float(q.monto) - float(q.monto_pagado)
+                    for q in credito.cuotas
+                    if q.estado != "pagado"
+                )
+                whatsapp.send_template(
+                    pac.telefono,
+                    settings.WA_ABONO_TEMPLATE,
+                    settings.WA_ABONO_LANG,
+                    components=[{"type": "body", "parameters": [
+                        {"type": "text", "text": pac.nombres},
+                        {"type": "text", "text": credito.numero},
+                        {"type": "text", "text": str(cuota.numero_cuota)},
+                        {"type": "text", "text": str(credito.numero_cuotas)},
+                        {"type": "text", "text": f"{float(data.monto):.2f}"},
+                        {"type": "text", "text": data.fecha_pago.strftime("%d/%m/%Y")},
+                        {"type": "text", "text": f"{saldo_pendiente:.2f}"},
+                    ]}],
+                )
+        except Exception as exc:
+            logger.warning("WhatsApp comprobante: %s", exc)
+
     return credito
 
 

@@ -1,7 +1,11 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+logger = logging.getLogger(__name__)
+
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.core.numeradores import siguiente_numero
@@ -88,4 +92,24 @@ def cambiar_estado(
     orden.estado = estado
     db.commit()
     db.refresh(orden)
+
+    # WhatsApp al paciente cuando la orden está lista para retirar
+    if estado == "listo" and orden.paciente_id:
+        try:
+            from app.services import whatsapp
+            from app.models.paciente import Paciente
+            pac = db.get(Paciente, orden.paciente_id)
+            if pac and pac.telefono:
+                whatsapp.send_template(
+                    pac.telefono,
+                    settings.WA_ORDEN_TEMPLATE,
+                    settings.WA_ORDEN_LANG,
+                    components=[{"type": "body", "parameters": [
+                        {"type": "text", "text": pac.nombres},
+                        {"type": "text", "text": orden.numero},
+                    ]}],
+                )
+        except Exception as exc:
+            logger.warning("WhatsApp orden lista: %s", exc)
+
     return orden

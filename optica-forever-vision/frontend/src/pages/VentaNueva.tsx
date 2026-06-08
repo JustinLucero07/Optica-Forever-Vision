@@ -1,13 +1,15 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Search, Plus, Trash2, ArrowLeft, ShoppingCart, Loader2 } from "lucide-react"
+import { Search, Plus, Trash2, ArrowLeft, ShoppingCart, Loader2, Receipt } from "lucide-react"
 
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import PacienteCombobox from "@/components/PacienteCombobox"
 
 interface Producto { id: number; nombre: string; codigo: string | null; precio_venta: number; stock_actual: number; unidad: string }
 interface CartItem { producto_id: number | null; descripcion: string; cantidad: number; precio_unitario: number; descuento_pct: number }
@@ -18,11 +20,27 @@ function calcSubtotal(it: CartItem) {
 
 export default function VentaNueva() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const presupuesto = (location.state as any)?.presupuesto
+
+  const initCart = (): CartItem[] => {
+    if (presupuesto?.items?.length) {
+      return presupuesto.items.map((it: any) => ({
+        producto_id: null,
+        descripcion: it.descripcion,
+        cantidad: Number(it.cantidad),
+        precio_unitario: Number(it.precio_unitario),
+        descuento_pct: Number(it.descuento),
+      }))
+    }
+    return []
+  }
+
   const [busqueda, setBusqueda] = useState("")
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [pacienteId, setPacienteId] = useState("")
+  const [cart, setCart] = useState<CartItem[]>(initCart)
+  const [pacienteId, setPacienteId] = useState(presupuesto?.paciente_id ? String(presupuesto.paciente_id) : "")
   const [descuentoGlobal, setDescuentoGlobal] = useState("0")
-  const [notas, setNotas] = useState("")
+  const [notas, setNotas] = useState(presupuesto ? `Basado en presupuesto ${presupuesto.numero}` : "")
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
 
   const { data: productos = [] } = useQuery<Producto[]>({
@@ -32,10 +50,6 @@ export default function VentaNueva() {
     staleTime: 5_000,
   })
 
-  const { data: pacientes = [] } = useQuery({
-    queryKey: ["pacientes-busq"],
-    queryFn: () => api.get("/pacientes", { params: { limit: 200 } }).then(r => r.data),
-  })
 
   const venderMut = useMutation({
     mutationFn: () => api.post("/ventas", {
@@ -55,7 +69,7 @@ export default function VentaNueva() {
       toast.success(`Venta ${res.data.numero} registrada`)
       navigate(`/ventas/${res.data.id}`)
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al guardar"),
+    onError: (e) => toast.error(errMsg(e, "Error al guardar")),
   })
 
   function agregarProducto(p: Producto) {
@@ -86,6 +100,11 @@ export default function VentaNueva() {
       <div className="flex items-center gap-3 px-6 py-4 border-b bg-background">
         <Button variant="ghost" size="sm" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /></Button>
         <h1 className="font-semibold text-lg">Nueva Venta</h1>
+        {presupuesto && (
+          <span className="flex items-center gap-1.5 text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200/60 px-2.5 py-1 rounded-full">
+            <Receipt className="h-3 w-3" /> Desde presupuesto {presupuesto.numero}
+          </span>
+        )}
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -176,12 +195,11 @@ export default function VentaNueva() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-xs">Paciente (opcional)</Label>
-                <select value={pacienteId} onChange={e => setPacienteId(e.target.value)} className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <option value="">— consumidor final —</option>
-                  {pacientes.map((p: any) => (
-                    <option key={p.id} value={p.id}>{p.apellidos}, {p.nombres}</option>
-                  ))}
-                </select>
+                <PacienteCombobox
+                  value={pacienteId}
+                  onChange={id => setPacienteId(id)}
+                  placeholder="— consumidor final —"
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Fecha</Label>

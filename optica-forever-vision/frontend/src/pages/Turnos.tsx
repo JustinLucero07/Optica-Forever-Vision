@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, MessageCircle } from "lucide-react"
 
@@ -8,7 +9,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
+import { Paginador } from "@/components/ui/Paginador"
 import { enviarRecordatorioCita } from "@/lib/whatsapp"
+import ConfirmDialog from "@/components/ConfirmDialog"
 
 // ── Helpers de fecha (sin date-fns) ───────────────────────────────────────────
 const DIAS_ES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
@@ -45,6 +48,24 @@ function fmtFechaCorta(d: Date) {
 function fmtFechaLarga(s: string) {
   const d = parseDate(s)
   return `${DIAS_ES[d.getDay()].toLowerCase()} ${d.getDate()} de ${MESES_LARGO[d.getMonth()]}`
+}
+
+function getDaysInMonthGrid(d: Date): Date[] {
+  const year = d.getFullYear()
+  const month = d.getMonth()
+  const firstDay = new Date(year, month, 1)
+  const lastDay = new Date(year, month + 1, 0)
+  const start = new Date(firstDay)
+  const startDow = firstDay.getDay()
+  start.setDate(firstDay.getDate() - (startDow === 0 ? 6 : startDow - 1))
+  const days: Date[] = []
+  const cur = new Date(start)
+  while (cur <= lastDay || days.length % 7 !== 0) {
+    days.push(new Date(cur))
+    cur.setDate(cur.getDate() + 1)
+    if (days.length > 42) break
+  }
+  return days
 }
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -93,16 +114,27 @@ const EMPTY_FORM = {
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function Turnos() {
   const [weekStart, setWeekStart] = useState(() => weekMonday(new Date()))
-  const [view, setView] = useState<"semana" | "lista">("semana")
+  const [mesActual, setMesActual] = useState(() => new Date())
+  const [view, setView] = useState<"semana" | "lista" | "mes">("lista")
   const [openForm, setOpenForm] = useState(false)
   const [editTurno, setEditTurno] = useState<Turno | null>(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
+  const [confirmDel, setConfirmDel] = useState<Turno | null>(null)
+  const [filtroEstado, setFiltroEstado] = useState("")
+  const [busqPac, setBusqPac] = useState("")
+  const [pageLista, setPageLista] = useState(1)
+  const [perPage, setPerPage] = useState(15)
   const qc = useQueryClient()
 
   const weekEnd = plusDays(weekStart, 6)
-  const fechaIni = toISO(weekStart)
-  const fechaFin = toISO(weekEnd)
+
+  const fechaIni = view === "mes"
+    ? toISO(new Date(mesActual.getFullYear(), mesActual.getMonth(), 1))
+    : toISO(weekStart)
+  const fechaFin = view === "mes"
+    ? toISO(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0))
+    : toISO(weekEnd)
 
   const { data: turnos = [], isLoading } = useQuery<Turno[]>({
     queryKey: ["turnos", fechaIni, fechaFin],
@@ -122,12 +154,6 @@ export default function Turnos() {
 
   const optometristas = users.filter(u => u.role === "optometrista" || u.role === "admin")
 
-  const estadoMut = useMutation({
-    mutationFn: ({ id, estado }: { id: number; estado: string }) =>
-      api.patch(`/turnos/${id}/estado`, null, { params: { estado } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["turnos"] }); toast.success("Estado actualizado") },
-    onError: () => toast.error("Error al actualizar estado"),
-  })
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => api.delete(`/turnos/${id}`),
@@ -206,22 +232,45 @@ export default function Turnos() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Agenda / Turnos</h1>
-          <p className="text-sm text-muted-foreground">{fmtRango(weekStart, weekEnd)}</p>
+          <p className="text-sm text-muted-foreground">
+            {view === "mes"
+              ? `${MESES_LARGO[mesActual.getMonth()]} ${mesActual.getFullYear()}`
+              : fmtRango(weekStart, weekEnd)}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant={view === "semana" ? "default" : "outline"} size="sm" onClick={() => setView("semana")}>Semana</Button>
+          <Button variant={view === "mes" ? "default" : "outline"} size="sm" onClick={() => setView("mes")}>Mes</Button>
           <Button variant={view === "lista" ? "default" : "outline"} size="sm" onClick={() => setView("lista")}>Lista</Button>
           <Button onClick={() => openNew()}><Plus className="h-4 w-4 mr-1" /> Nuevo turno</Button>
         </div>
       </div>
 
-      {/* Week navigation */}
+      {/* Week / month navigation */}
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => setWeekStart(w => plusWeeks(w, -1))}>
+        <Button variant="outline" size="sm" onClick={() => {
+          if (view === "mes") {
+            setMesActual(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))
+          } else {
+            setWeekStart(w => plusWeeks(w, -1))
+          }
+        }}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setWeekStart(weekMonday(new Date()))}>Hoy</Button>
-        <Button variant="outline" size="sm" onClick={() => setWeekStart(w => plusWeeks(w, 1))}>
+        <Button variant="outline" size="sm" onClick={() => {
+          if (view === "mes") {
+            setMesActual(new Date())
+          } else {
+            setWeekStart(weekMonday(new Date()))
+          }
+        }}>Hoy</Button>
+        <Button variant="outline" size="sm" onClick={() => {
+          if (view === "mes") {
+            setMesActual(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))
+          } else {
+            setWeekStart(w => plusWeeks(w, 1))
+          }
+        }}>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
@@ -268,57 +317,156 @@ export default function Turnos() {
         </div>
       )}
 
-      {/* LISTA */}
-      {!isLoading && view === "lista" && (
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left px-4 py-2">Fecha</th>
-                <th className="text-left px-4 py-2">Hora</th>
-                <th className="text-left px-4 py-2">Paciente</th>
-                <th className="text-left px-4 py-2">Motivo</th>
-                <th className="text-left px-4 py-2">Estado</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {turnos.length === 0 && (
-                <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Sin turnos esta semana</td></tr>
-              )}
-              {turnos.map(t => (
-                <tr key={t.id} className="border-t hover:bg-muted/30">
-                  <td className="px-4 py-2">{fmtFechaCorta(parseDate(t.fecha))}</td>
-                  <td className="px-4 py-2">{t.hora_inicio}{t.hora_fin ? ` – ${t.hora_fin}` : ""}</td>
-                  <td className="px-4 py-2">{pacienteNombre(t.paciente_id)}</td>
-                  <td className="px-4 py-2">{t.motivo}</td>
-                  <td className="px-4 py-2"><EstadoBadge estado={t.estado} /></td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>Editar</Button>
-                      {t.paciente_id && pacienteTelefono(t.paciente_id) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-green-700"
-                          title="Enviar recordatorio WhatsApp"
-                          onClick={() => enviarRecordatorio(t)}
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" className="text-destructive"
-                        onClick={() => { if (confirm("¿Eliminar turno?")) deleteMut.mutate(t.id) }}>
-                        Eliminar
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* MES */}
+      {!isLoading && view === "mes" && (
+        <div>
+          <div className="grid grid-cols-7 mb-1">
+            {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map(d => (
+              <div key={d} className="text-center text-xs font-semibold text-muted-foreground py-1">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-px bg-border border border-border rounded-lg overflow-hidden">
+            {getDaysInMonthGrid(mesActual).map(day => {
+              const isCurrentMonth = day.getMonth() === mesActual.getMonth()
+              const isToday = sameDay(day, new Date())
+              const dayTurnos = turnosDelDia(day)
+              const visible = dayTurnos.slice(0, 3)
+              const extra = dayTurnos.length - 3
+              return (
+                <div
+                  key={toISO(day)}
+                  className={`bg-background min-h-[100px] p-1 ${!isCurrentMonth ? "opacity-40" : ""}`}
+                >
+                  <div
+                    className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full mb-1 cursor-pointer hover:bg-accent ${isToday ? "bg-primary text-primary-foreground" : "text-foreground"}`}
+                    onClick={() => openNew(toISO(day))}
+                  >
+                    {day.getDate()}
+                  </div>
+                  <div className="space-y-0.5">
+                    {visible.map(t => (
+                      <div
+                        key={t.id}
+                        className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 ${ESTADO_COLORS[t.estado] ?? "bg-gray-50"}`}
+                        onClick={() => openEdit(t)}
+                        title={`${t.hora_inicio} — ${t.motivo}`}
+                      >
+                        {t.hora_inicio} {t.motivo}
+                      </div>
+                    ))}
+                    {extra > 0 && (
+                      <div className="text-[10px] text-muted-foreground px-1">+{extra} más</div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
+
+      {/* LISTA */}
+      {!isLoading && view === "lista" && (
+        <>
+          {/* Filtros lista */}
+          <div className="flex flex-wrap gap-3">
+            <Input
+              placeholder="Buscar paciente..."
+              value={busqPac}
+              onChange={e => { setBusqPac(e.target.value); setPageLista(1) }}
+              className="h-9 w-48"
+            />
+            <select
+              value={filtroEstado}
+              onChange={e => { setFiltroEstado(e.target.value); setPageLista(1) }}
+              className="border rounded-md px-3 py-2 text-sm bg-background h-9"
+            >
+              <option value="">Todos los estados</option>
+              {ESTADOS_TURNO.map(s => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+            </select>
+            {(filtroEstado || busqPac) && (
+              <Button variant="ghost" size="sm" onClick={() => { setFiltroEstado(""); setBusqPac(""); setPageLista(1) }}>
+                Limpiar
+              </Button>
+            )}
+          </div>
+
+          {(() => {
+            const sorted = turnos
+              .slice()
+              .sort((a, b) => `${a.fecha}${a.hora_inicio}`.localeCompare(`${b.fecha}${b.hora_inicio}`))
+              .filter(t => {
+                const matchEstado = !filtroEstado || t.estado === filtroEstado
+                const matchPac = !busqPac || pacienteNombre(t.paciente_id).toLowerCase().includes(busqPac.toLowerCase())
+                return matchEstado && matchPac
+              })
+            const paged = sorted.slice((pageLista - 1) * perPage, pageLista * perPage)
+            return (
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left px-4 py-2">Fecha</th>
+                      <th className="text-left px-4 py-2">Hora</th>
+                      <th className="text-left px-4 py-2">Paciente</th>
+                      <th className="text-left px-4 py-2">Motivo</th>
+                      <th className="text-left px-4 py-2">Estado</th>
+                      <th className="px-4 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.length === 0 && (
+                      <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Sin turnos en este período</td></tr>
+                    )}
+                    {paged.map(t => {
+                      const isPast = `${t.fecha}T${t.hora_inicio}` < new Date().toISOString().slice(0, 16)
+                      return (
+                        <tr key={t.id} className={`border-t hover:bg-muted/30 ${isPast ? "opacity-60" : ""}`}>
+                          <td className="px-4 py-2">{fmtFechaCorta(parseDate(t.fecha))}</td>
+                          <td className="px-4 py-2 font-semibold tabular-nums">{t.hora_inicio}{t.hora_fin ? ` – ${t.hora_fin}` : ""}</td>
+                          <td className="px-4 py-2">
+                            {t.paciente_id
+                              ? <Link to={`/pacientes/${t.paciente_id}`} className="hover:text-primary hover:underline underline-offset-2">{pacienteNombre(t.paciente_id)}</Link>
+                              : "—"}
+                          </td>
+                          <td className="px-4 py-2">{t.motivo}</td>
+                          <td className="px-4 py-2"><EstadoBadge estado={t.estado} /></td>
+                          <td className="px-4 py-2">
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>Editar</Button>
+                              {t.paciente_id && pacienteTelefono(t.paciente_id) && (
+                                <Button variant="ghost" size="sm" className="text-green-700"
+                                  title="Enviar recordatorio WhatsApp" onClick={() => enviarRecordatorio(t)}>
+                                  <MessageCircle className="h-4 w-4" />
+                                </Button>
+                              )}
+                              <Button variant="ghost" size="sm" className="text-destructive"
+                                onClick={() => setConfirmDel(t)}>
+                                Eliminar
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                <Paginador page={pageLista} total={sorted.length} perPage={perPage} onChange={setPageLista} onPerPageChange={n => { setPerPage(n); setPageLista(1) }} />
+              </div>
+            )
+          })()}
+        </>
+      )}
+
+      <ConfirmDialog
+        open={!!confirmDel}
+        title="Eliminar turno"
+        description={confirmDel ? `¿Eliminar el turno del ${fmtFechaCorta(parseDate(confirmDel.fecha))} a las ${confirmDel.hora_inicio}?` : ""}
+        confirmLabel="Eliminar"
+        loading={deleteMut.isPending}
+        onConfirm={() => { deleteMut.mutate(confirmDel!.id); setConfirmDel(null) }}
+        onCancel={() => setConfirmDel(null)}
+      />
 
       {/* FORMULARIO */}
       <Dialog open={openForm} onClose={() => setOpenForm(false)} className="max-w-lg">

@@ -8,6 +8,7 @@ class CreditoCreate(BaseModel):
     venta_id: int | None = None
     paciente_id: int | None = None
     monto_total: float
+    abono_inicial: float = 0
     numero_cuotas: int
     periodicidad: str = "mensual"   # mensual | quincenal | semanal
     fecha_inicio: date
@@ -42,6 +43,7 @@ class CreditoOut(BaseModel):
     paciente_id: int | None
     paciente_nombre: str | None = None
     monto_total: Decimal
+    abono_inicial: Decimal = Decimal("0")
     monto_pagado: Decimal
     numero_cuotas: int
     periodicidad: str
@@ -61,6 +63,7 @@ class CreditoListItem(BaseModel):
     paciente_nombre: str | None = None
     venta_id: int | None
     monto_total: Decimal
+    abono_inicial: Decimal = Decimal("0")
     monto_pagado: Decimal
     numero_cuotas: int
     periodicidad: str

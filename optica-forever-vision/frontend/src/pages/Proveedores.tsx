@@ -1,12 +1,14 @@
 import { useState } from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Plus, Loader2, Pencil, Phone, Mail, Building2 } from "lucide-react"
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
+import { Paginador } from "@/components/ui/Paginador"
 
 interface Proveedor {
   id: number
@@ -61,10 +63,13 @@ export default function Proveedores() {
   const qc = useQueryClient()
   const [search, setSearch] = useState("")
   const [filtroTipo, setFiltroTipo] = useState("")
+  const [filtroActivo, setFiltroActivo] = useState<"" | "activo" | "inactivo">("")
   const [openForm, setOpenForm] = useState(false)
   const [editP, setEditP] = useState<Proveedor | null>(null)
   const [form, setForm] = useState<Omit<Proveedor, "id">>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(15)
 
   const { data: proveedores = [], isLoading } = useQuery<Proveedor[]>({
     queryKey: ["proveedores"],
@@ -125,8 +130,8 @@ export default function Proveedores() {
       }
       qc.invalidateQueries({ queryKey: ["proveedores"] })
       setOpenForm(false)
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail
+    } catch (err) {
+      const msg = errMsg(err)
       toast.error(msg === "Ya existe un proveedor con ese RUC" ? msg : "Error al guardar")
     } finally {
       setSaving(false)
@@ -139,8 +144,10 @@ export default function Proveedores() {
       || (p.nombre_comercial ?? "").toLowerCase().includes(term)
       || (p.ruc ?? "").includes(term)
     const matchTipo = !filtroTipo || p.tipo === filtroTipo
-    return matchText && matchTipo
+    const matchActivo = !filtroActivo || (filtroActivo === "activo" ? p.activo : !p.activo)
+    return matchText && matchTipo && matchActivo
   })
+  const paged = filtered.slice((page - 1) * perPage, page * perPage)
 
   const f = (field: keyof Omit<Proveedor, "id">) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm(prev => ({ ...prev, [field]: e.target.value }))
@@ -159,15 +166,24 @@ export default function Proveedores() {
           placeholder="Buscar por nombre o RUC..."
           className="w-64"
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => { setSearch(e.target.value); setPage(1) }}
         />
         <select
           className="border rounded-md px-3 py-2 text-sm bg-background"
           value={filtroTipo}
-          onChange={e => setFiltroTipo(e.target.value)}
+          onChange={e => { setFiltroTipo(e.target.value); setPage(1) }}
         >
           <option value="">Todos los tipos</option>
           {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+        <select
+          className="border rounded-md px-3 py-2 text-sm bg-background"
+          value={filtroActivo}
+          onChange={e => { setFiltroActivo(e.target.value as "" | "activo" | "inactivo"); setPage(1) }}
+        >
+          <option value="">Activos e inactivos</option>
+          <option value="activo">Solo activos</option>
+          <option value="inactivo">Solo inactivos</option>
         </select>
       </div>
 
@@ -178,8 +194,9 @@ export default function Proveedores() {
       ) : filtered.length === 0 ? (
         <p className="text-center text-muted-foreground py-10">No hay proveedores</p>
       ) : (
+        <>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(p => (
+          {paged.map(p => (
             <div
               key={p.id}
               className={`border rounded-lg p-4 space-y-2 bg-card ${!p.activo ? "opacity-60" : ""}`}
@@ -227,6 +244,10 @@ export default function Proveedores() {
             </div>
           ))}
         </div>
+        <div className="border-t mt-2">
+          <Paginador page={page} total={filtered.length} perPage={perPage} onChange={setPage} onPerPageChange={n => { setPerPage(n); setPage(1) }} />
+        </div>
+        </>
       )}
 
       {/* Form dialog */}

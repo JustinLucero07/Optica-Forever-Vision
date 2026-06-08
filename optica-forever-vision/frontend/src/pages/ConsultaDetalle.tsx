@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useAuthStore } from "@/store/auth"
+import { getMarcaLogo, MARCA_FOOTER, PDF_BASE_CSS } from "@/lib/pdf"
+import { useBrandStore } from "@/store/brand"
 
-function Fila({ label, valor }: { label: string; valor: any }) {
+function Fila({ label, valor }: { label: string; valor: string | number | boolean | null | undefined }) {
   if (valor === null || valor === undefined || valor === "") return null
   return (
     <div className="grid grid-cols-[160px_1fr] gap-2 py-1.5 border-b last:border-0">
@@ -19,7 +21,7 @@ function Fila({ label, valor }: { label: string; valor: any }) {
   )
 }
 
-function SeccionRx({ titulo, esf, cil, eje, add, av }: any) {
+function SeccionRx({ titulo, esf, cil, eje, add, av }: { titulo: string; esf?: number | null; cil?: number | null; eje?: number | null; add?: number | null; av?: string | null }) {
   if (!esf && !cil && !eje) return null
   return (
     <div className="space-y-1">
@@ -35,18 +37,13 @@ function SeccionRx({ titulo, esf, cil, eje, add, av }: any) {
   )
 }
 
-function fmtRx(esf: any, cil: any, eje: any, add: any) {
-  const parts = []
-  if (esf != null) parts.push(`Esf: ${Number(esf) >= 0 ? "+" : ""}${esf}`)
-  if (cil != null) parts.push(`Cil: ${Number(cil) >= 0 ? "+" : ""}${cil}`)
-  if (eje != null) parts.push(`Eje: ${eje}°`)
-  if (add != null) parts.push(`Add: +${add}`)
-  return parts.join("  ") || "—"
-}
 
-function printCertificado(c: any, paciente: any, conMedidas: boolean, firma = "") {
+type ConsultaData = Record<string, unknown> & { recetas?: Array<{ tipo: string } & Record<string, unknown>> }
+type PacienteData = Record<string, unknown>
+
+function printCertificado(c: ConsultaData, paciente: PacienteData | undefined, conMedidas: boolean, firma = "", logo?: string | null) {
   const nom = paciente ? `${paciente.apellidos} ${paciente.nombres}` : `Paciente #${c.paciente_id}`
-  const recLC = c.recetas?.find((r: any) => r.tipo === "lente_convencional")
+  const recLC = c.recetas?.find((r) => r.tipo === "lente_convencional")
   const recetaHtml = conMedidas && recLC ? `
     <table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:11px">
       <thead><tr style="background:#e0f2fe">
@@ -79,38 +76,48 @@ function printCertificado(c: any, paciente: any, conMedidas: boolean, firma = ""
   ` : conMedidas ? `<p style="color:#6b7280;font-size:11px">Sin receta registrada</p>` : ""
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Certificado de Consulta</title>
-  <style>body{font-family:Arial,sans-serif;font-size:12px;margin:0;padding:24px}
-  .hdr{background:#0891b2;color:white;padding:14px 18px;border-radius:6px 6px 0 0}
-  .hdr h1{margin:0;font-size:17px;font-weight:bold}.hdr p{margin:2px 0;font-size:11px;opacity:.9}
-  .body{border:1px solid #e5e7eb;border-top:none;padding:16px;border-radius:0 0 6px 6px}
+  <style>${PDF_BASE_CSS}
   .section{margin:12px 0}.section h3{font-size:11px;color:#0891b2;text-transform:uppercase;border-bottom:1px solid #e0f2fe;padding-bottom:4px;margin-bottom:8px}
   .row{display:flex;gap:24px;margin:4px 0;font-size:11px}
   .lbl{color:#6b7280;min-width:130px}.sig{margin-top:40px;border-top:1px solid #374151;width:200px;text-align:center;padding-top:4px;font-size:10px}
-  @media print{body{padding:0}}</style></head><body>
-  <div class="hdr"><h1>ÓPTICA FOREVER VISION</h1><p>Certificado de Consulta Oftalmológica</p></div>
-  <div class="body">
-    <div class="section"><h3>Datos del paciente</h3>
+  </style></head><body>
+  <div class="doc-hdr">
+    <div class="doc-hdr-left">
+      ${getMarcaLogo(logo)}
+      <div class="doc-hdr-title">Certificado de Consulta Oftalmológica</div>
+    </div>
+    <div class="doc-hdr-right">
+      <div class="num">${c.numero}</div>
+      <div class="fecha">${c.fecha}</div>
+    </div>
+  </div>
+  <div class="doc-body">
+    <div class="doc-section"><h3 class="doc-section-title">Datos del paciente</h3>
       <div class="row"><span class="lbl">Paciente:</span><strong>${nom}</strong></div>
       ${paciente?.cedula ? `<div class="row"><span class="lbl">Cédula:</span>${paciente.cedula}</div>` : ""}
       <div class="row"><span class="lbl">Fecha consulta:</span>${c.fecha}</div>
       <div class="row"><span class="lbl">N° Consulta:</span>${c.numero}</div>
     </div>
-    ${c.diagnostico || c.motivo_consulta ? `<div class="section"><h3>Diagnóstico</h3>
+    ${c.diagnostico || c.motivo_consulta ? `<div class="doc-section"><h3 class="doc-section-title">Diagnóstico</h3>
       ${c.motivo_consulta ? `<div class="row"><span class="lbl">Motivo:</span>${c.motivo_consulta}</div>` : ""}
       ${c.diagnostico ? `<div class="row"><span class="lbl">Diagnóstico:</span><strong>${c.diagnostico}</strong></div>` : ""}
       ${c.plan_tratamiento ? `<div class="row"><span class="lbl">Plan:</span>${c.plan_tratamiento}</div>` : ""}
     </div>` : ""}
-    ${conMedidas ? `<div class="section"><h3>Prescripción</h3>${recetaHtml}</div>` : ""}
-    ${c.proximo_control ? `<div class="section"><h3>Próximo control</h3><p style="font-size:11px">${c.proximo_control}</p></div>` : ""}
-    <div style="display:flex;gap:40px;margin-top:36px">
-      <div class="sig">
-        ${firma ? `<img src="${firma}" style="height:48px;object-fit:contain;margin-bottom:4px" />` : ""}
-        Optometrista / Responsable
+    ${conMedidas ? `<div class="doc-section"><h3 class="doc-section-title">Prescripción</h3>${recetaHtml}</div>` : ""}
+    ${c.proximo_control ? `<div class="doc-section"><h3 class="doc-section-title">Próximo control</h3><p style="font-size:11px">${c.proximo_control}</p></div>` : ""}
+    <div class="firma-row">
+      <div class="firma-box">
+        ${firma ? `<img src="${firma}" />` : ""}
+        <div class="line"></div>
+        <p>Optometrista / Responsable</p>
       </div>
-      <div class="sig">Firma / Huella del Paciente</div>
+      <div class="firma-box">
+        <div class="line" style="margin-top:44px"></div>
+        <p>Firma / Huella del Paciente</p>
+      </div>
     </div>
-    <p style="margin-top:16px;font-size:9px;color:#9ca3af;text-align:center">Av. 24 de mayo y Puyo, Cuenca · Generado ${new Date().toLocaleString("es-EC")}</p>
   </div>
+  ${MARCA_FOOTER}
   <script>window.onload=()=>window.print()</script></body></html>`
 
   const w = window.open("", "_blank", "width=700,height=800")
@@ -143,8 +150,8 @@ export default function ConsultaDetalle() {
   if (isLoading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Cargando…</div>
   if (!c) return <div className="p-6 text-destructive">Consulta no encontrada</div>
 
-  const recLC = c.recetas?.find((r: any) => r.tipo === "lente_convencional")
-  const recCL = c.recetas?.find((r: any) => r.tipo === "contactologia")
+  const recLC = c.recetas?.find((r: { tipo: string }) => r.tipo === "lente_convencional")
+  const recCL = c.recetas?.find((r: { tipo: string }) => r.tipo === "contactologia")
   const nombrePac = paciente ? `${paciente.apellidos}, ${paciente.nombres}` : `Paciente #${c.paciente_id}`
 
   return (
@@ -174,7 +181,7 @@ export default function ConsultaDetalle() {
               className={`px-3 py-1.5 transition-colors ${!conMedidas ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             >Sin medidas</button>
           </div>
-          <Button variant="outline" size="sm" onClick={() => printCertificado(c, paciente, conMedidas, config?.firma_electronica || "")}>
+          <Button variant="outline" size="sm" onClick={() => printCertificado(c, paciente, conMedidas, config?.firma_electronica || "", useBrandStore.getState().logo)}>
             <Printer className="h-4 w-4 mr-1" /> Certificado
           </Button>
           {(rol === "admin" || rol === "optometrista") && (
@@ -201,7 +208,7 @@ export default function ConsultaDetalle() {
           <CardHeader><CardTitle className="text-sm">Agudeza Visual</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-3 gap-2 text-sm">
-              {["OD", "OI", "AO"].map((e, i) => {
+              {["OD", "OI", "AO"].map((e) => {
                 const k = e.toLowerCase()
                 return (
                   <div key={e} className="text-center">

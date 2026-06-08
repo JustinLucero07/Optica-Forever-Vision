@@ -16,6 +16,8 @@ class PacienteCreate(BaseModel):
     ocupacion: str | None = None
     origen: str | None = None
     referido_por: str | None = None
+    armazon_tipo: str | None = None
+    armazon_notas: str | None = None
 
 
 class PacienteUpdate(BaseModel):
@@ -31,6 +33,8 @@ class PacienteUpdate(BaseModel):
     ocupacion: str | None = None
     origen: str | None = None
     referido_por: str | None = None
+    armazon_tipo: str | None = None
+    armazon_notas: str | None = None
 
 
 class PacienteOut(BaseModel):
@@ -48,6 +52,9 @@ class PacienteOut(BaseModel):
     ocupacion: str | None
     origen: str | None
     referido_por: str | None
+    foto: str | None = None
+    armazon_tipo: str | None = None
+    armazon_notas: str | None = None
     created_at: datetime
     updated_at: datetime
 

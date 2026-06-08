@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
@@ -126,7 +126,7 @@ def actualizar_proveedor(
     return p
 
 
-@router.delete("/{proveedor_id}", status_code=204)
+@router.delete("/{proveedor_id}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_proveedor(
     proveedor_id: int,
     db: Session = Depends(get_db),

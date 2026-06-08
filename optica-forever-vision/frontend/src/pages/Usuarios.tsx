@@ -2,8 +2,9 @@ import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Pencil, Loader2, UserCheck, UserX } from "lucide-react"
+import { Plus, Pencil, Loader2, UserCheck, UserX, Search } from "lucide-react"
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -52,6 +53,8 @@ function formatFecha(iso: string): string {
 export default function Usuarios() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editando, setEditando] = useState<Usuario | null>(null)
+  const [busqueda, setBusqueda] = useState("")
+  const [filtroRol, setFiltroRol] = useState("")
   const qc = useQueryClient()
   const currentUserId = useAuthStore((s) => s.user?.id)
 
@@ -81,7 +84,7 @@ export default function Usuarios() {
       cerrarDialog()
       toast.success("Usuario creado")
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al crear"),
+    onError: (e) => toast.error(errMsg(e, "Error al crear")),
   })
 
   const editarMut = useMutation({
@@ -99,7 +102,7 @@ export default function Usuarios() {
       cerrarDialog()
       toast.success("Usuario actualizado")
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al actualizar"),
+    onError: (e) => toast.error(errMsg(e, "Error al actualizar")),
   })
 
   const toggleActivoMut = useMutation({
@@ -108,7 +111,7 @@ export default function Usuarios() {
       qc.invalidateQueries({ queryKey: ["usuarios"] })
       toast.success("Estado actualizado")
     },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+    onError: (e) => toast.error(errMsg(e, "Error")),
   })
 
   function handleToggleActivo(u: Usuario) {
@@ -140,6 +143,13 @@ export default function Usuarios() {
 
   const cargandoMut = crearMut.isPending || editarMut.isPending
 
+  const usuariosFiltrados = usuarios.filter(u => {
+    const q = busqueda.toLowerCase()
+    const matchText = !q || u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+    const matchRol = !filtroRol || u.role === filtroRol
+    return matchText && matchRol
+  })
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -147,6 +157,28 @@ export default function Usuarios() {
         <Button onClick={abrirNuevo}>
           <Plus className="h-4 w-4 mr-2" /> Nuevo Usuario
         </Button>
+      </div>
+
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nombre o email..."
+            className="pl-9 w-64"
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+          />
+        </div>
+        <select
+          value={filtroRol}
+          onChange={e => setFiltroRol(e.target.value)}
+          className="border rounded-md px-3 py-2 text-sm bg-background"
+        >
+          <option value="">Todos los roles</option>
+          <option value="admin">Admin</option>
+          <option value="optometrista">Optometrista</option>
+          <option value="vendedor">Vendedor</option>
+        </select>
       </div>
 
       <div className="rounded-md border overflow-hidden">
@@ -169,14 +201,14 @@ export default function Usuarios() {
                 </td>
               </tr>
             )}
-            {!isLoading && usuarios.length === 0 && (
+            {!isLoading && usuariosFiltrados.length === 0 && (
               <tr>
                 <td colSpan={6} className="text-center py-8 text-muted-foreground">
                   No se encontraron usuarios
                 </td>
               </tr>
             )}
-            {usuarios.map((u) => (
+            {usuariosFiltrados.map((u) => (
               <tr key={u.id} className={`hover:bg-muted/30 transition-colors ${!u.is_active ? "opacity-50" : ""}`}>
                 <td className="px-4 py-3 font-medium">{u.full_name}</td>
                 <td className="px-4 py-3 text-muted-foreground">{u.email}</td>

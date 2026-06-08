@@ -31,6 +31,34 @@ class Settings(BaseSettings):
     WA_PHONE_ID: str = ""
     WA_BIRTHDAY_TEMPLATE: str = "cumpleanos_optica"
     WA_BIRTHDAY_LANG: str = "es"
+    WA_CUOTA_TEMPLATE: str = "recordatorio_cuota"
+    WA_CUOTA_LANG: str = "es"
+    WA_TURNO_TEMPLATE: str = "recordatorio_turno"
+    WA_TURNO_LANG: str = "es"
+    WA_STOCK_TEMPLATE: str = "alerta_stock_bajo"
+    WA_STOCK_LANG: str = "es"
+    WA_SEMANAL_TEMPLATE: str = "resumen_semanal"
+    WA_SEMANAL_LANG: str = "es"
+    WA_ABONO_TEMPLATE: str = "comprobante_abono"
+    WA_ABONO_LANG: str = "es"
+    WA_ORDEN_TEMPLATE: str = "orden_lista"
+    WA_ORDEN_LANG: str = "es"
+    WA_CONTROL_TEMPLATE: str = "recordatorio_control_visual"
+    WA_CONTROL_LANG: str = "es"
+    # Días antes del próximo control para enviar el recordatorio (0 = el mismo día)
+    CONTROL_REMINDER_DAYS: int = 7
+
+    # Redis — opcional; si está configurado lo usan lockout de login y APScheduler
+    REDIS_URL: str = ""
+
+    # Poner False en workers secundarios de gunicorn para evitar crons duplicados
+    SCHEDULER_ENABLED: bool = True
+
+    # SMTP para reportes por email (Gmail: smtp.gmail.com:587 con App Password)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASS: str = ""
 
     @model_validator(mode="after")
     def validate_secrets(self) -> "Settings":

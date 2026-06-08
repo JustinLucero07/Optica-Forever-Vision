@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(timeout 12 npm run dev)",
+      "Bash(timeout 15 npm run dev)",
+      "Bash(npm run *)",
+      "Bash(npx vite *)",
+      "Read(//home/justin/.claude/projects/-home-justin-Documentos-Optica/memory/**)",
+      "Bash(sed -n '370,376p' /home/justin/Documentos/Optica/optica-forever-vision/frontend/src/pages/Reportes.tsx)",
+      "Bash(sed -n '706,712p' /home/justin/Documentos/Optica/optica-forever-vision/frontend/src/pages/Reportes.tsx)"
+    ]
+  }
+}

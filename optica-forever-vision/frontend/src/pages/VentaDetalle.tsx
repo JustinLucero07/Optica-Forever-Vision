@@ -6,6 +6,7 @@ import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { MARCA_FOOTER, PDF_BASE_CSS, openPrintWindow, getMarcaLogo } from "@/lib/pdf"
 
 function fmtDate(s: string) {
   const [y, m, d] = s.slice(0, 10).split("-")
@@ -27,7 +28,8 @@ interface Paciente {
 }
 interface Cobro { id: number; monto: number }
 
-function printComprobante(v: Venta, pac: Paciente | null, abonado: number) {
+async function printComprobante(v: Venta, pac: Paciente | null, abonado: number) {
+  const logo = (await import("@/store/brand")).useBrandStore.getState().logo
   const pendiente = Math.max(0, Number(v.total) - abonado)
   const nombre = pac ? `${pac.apellidos} ${pac.nombres}` : "—"
   const cedula = pac?.cedula ?? "—"
@@ -37,84 +39,66 @@ function printComprobante(v: Venta, pac: Paciente | null, abonado: number) {
 
   const filas = v.items.map(it => `
     <tr>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">${it.descripcion}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;">${it.cantidad}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;">$${Number(it.precio_unitario).toFixed(2)}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;">${it.descuento_pct > 0 ? it.descuento_pct + "%" : "—"}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">$${Number(it.subtotal).toFixed(2)}</td>
+      <td>${it.descripcion}</td>
+      <td class="c">${it.cantidad}</td>
+      <td class="r">$${Number(it.precio_unitario).toFixed(2)}</td>
+      <td class="c">${it.descuento_pct > 0 ? it.descuento_pct + "%" : "—"}</td>
+      <td class="r" style="font-weight:600">$${Number(it.subtotal).toFixed(2)}</td>
     </tr>`).join("")
-
-  const descuentoRow = Number(v.descuento) > 0
-    ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Descuento:</span><span>-$${Number(v.descuento).toFixed(2)}</span></div>`
-    : ""
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>Comprobante ${v.numero}</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:20px;max-width:820px;margin:auto}
-    .hdr{background:#0891b2;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:4px 4px 0 0}
-    .hdr h1{font-size:20px;font-weight:700;letter-spacing:1px}
-    .hdr h2{font-size:11px;font-weight:400;margin-top:3px;text-transform:uppercase;letter-spacing:1px}
-    .hdr-r{text-align:right}.hdr-r .num{font-size:20px;font-weight:700}
-    .info{display:flex;border:1px solid #e5e7eb;border-top:none}
-    .logo{width:150px;min-height:80px;border-right:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:11px;padding:10px;flex-shrink:0}
-    .datos{flex:1}
-    .datos table{width:100%;border-collapse:collapse}
-    .datos td{padding:5px 10px;border-bottom:1px solid #f3f4f6;font-size:12px}
-    .datos td:first-child{font-weight:600;background:#f9fafb;width:32%;color:#374151}
-    .items-tbl{width:100%;border-collapse:collapse;margin-top:10px;border:1px solid #e5e7eb}
-    .items-tbl th{background:#0891b2;color:#fff;padding:7px 10px;font-size:12px;text-align:left}
-    .items-tbl th.r{text-align:right}.items-tbl th.c{text-align:center}
-    .footer{background:#0891b2;color:#fff;padding:12px 20px;border-radius:0 0 4px 4px;margin-top:0}
-    .t-row{display:flex;justify-content:flex-end;gap:40px;margin-bottom:5px}
-    .t-row .v{min-width:90px;text-align:right;font-weight:600}
-    .t-row.big .v{font-size:18px;font-weight:700}
-    @media print{body{padding:8px}}
+    ${PDF_BASE_CSS}
+    td.r{text-align:right} td.c{text-align:center}
+    .totales-box{padding:12px 20px;display:flex;flex-direction:column;align-items:flex-end;gap:3px;border-top:1px solid #e5e7eb}
   </style></head><body>
-  <div class="hdr">
-    <div><h1>ÓPTICA FOREVER VISION</h1><h2>Comprobante de Venta</h2></div>
-    <div class="hdr-r">
+  <div class="doc-hdr">
+    <div class="doc-hdr-left">
+      ${getMarcaLogo(logo)}
+      <div class="doc-hdr-title">Comprobante de Venta</div>
+    </div>
+    <div class="doc-hdr-right">
       <div class="num">${v.numero}</div>
-      <div>Fecha: ${fmtDate(v.fecha)}</div>
-      <div>Estado: ${v.estado.toUpperCase()}</div>
+      <div class="fecha">Fecha: ${fmtDate(v.fecha)}</div>
+      <div class="fecha" style="margin-top:2px">Estado: <strong>${v.estado.toUpperCase()}</strong></div>
     </div>
   </div>
-  <div class="info">
-    <div class="logo">[Logo]</div>
-    <div class="datos"><table>
-      <tr><td>Paciente</td><td>${nombre}</td></tr>
-      <tr><td>Cédula</td><td>${cedula}</td></tr>
-      <tr><td>Teléfono</td><td>${tel}</td></tr>
-      <tr><td>Dirección</td><td>${dir}</td></tr>
-      <tr><td>Correo</td><td>${mail}</td></tr>
-      ${v.notas ? `<tr><td>Observaciones</td><td>${v.notas}</td></tr>` : ""}
-    </table></div>
+  <div class="doc-body">
+    <div class="doc-section">
+      <div class="doc-section-title">Datos del Comprador</div>
+      <div class="doc-grid">
+        <span class="lbl">Nombre</span><span class="val"><strong>${nombre}</strong></span>
+        <span class="lbl">Cédula</span><span class="val">${cedula}</span>
+        <span class="lbl">Teléfono</span><span class="val">${tel}</span>
+        <span class="lbl">Dirección</span><span class="val">${dir}</span>
+        ${mail !== "—" ? `<span class="lbl">Correo</span><span class="val">${mail}</span>` : ""}
+        ${v.notas ? `<span class="lbl">Observaciones</span><span class="val">${v.notas}</span>` : ""}
+      </div>
+    </div>
+    <table class="items">
+      <thead><tr>
+        <th>Descripción</th>
+        <th class="c" style="width:55px">Cant.</th>
+        <th class="r" style="width:85px">P. Unit.</th>
+        <th class="c" style="width:65px">Desc.%</th>
+        <th class="r" style="width:85px">Subtotal</th>
+      </tr></thead>
+      <tbody>${filas}</tbody>
+    </table>
+    <div class="totales-box">
+      <div class="t-row" style="min-width:280px"><span>Subtotal:</span><span>$${Number(v.subtotal).toFixed(2)}</span></div>
+      ${Number(v.descuento) > 0 ? `<div class="t-row" style="min-width:280px;color:#dc2626"><span>Descuento:</span><span>-$${Number(v.descuento).toFixed(2)}</span></div>` : ""}
+      <div class="t-row big" style="min-width:280px"><span>TOTAL:</span><span>$${Number(v.total).toFixed(2)}</span></div>
+      <div class="t-row" style="min-width:280px;color:#16a34a"><span>Abonado:</span><span>$${abonado.toFixed(2)}</span></div>
+      ${pendiente > 0 ? `<div class="t-row" style="min-width:280px;color:#dc2626"><span>Saldo Pendiente:</span><span>$${pendiente.toFixed(2)}</span></div>` : ""}
+    </div>
   </div>
-  <table class="items-tbl">
-    <thead><tr>
-      <th>Descripción</th>
-      <th class="c" style="width:60px">Cant.</th>
-      <th class="r" style="width:90px">P. Unitario</th>
-      <th class="c" style="width:70px">Desc. %</th>
-      <th class="r" style="width:90px">Subtotal</th>
-    </tr></thead>
-    <tbody>${filas}</tbody>
-  </table>
-  <div class="footer">
-    <div class="t-row"><span>Subtotal:</span><span class="v">$${Number(v.subtotal).toFixed(2)}</span></div>
-    ${descuentoRow}
-    <div class="t-row big"><span>TOTAL:</span><span class="v">$${Number(v.total).toFixed(2)}</span></div>
-    <div class="t-row"><span>Abonado:</span><span class="v">$${abonado.toFixed(2)}</span></div>
-    <div class="t-row"><span>Saldo Pendiente:</span><span class="v">$${pendiente.toFixed(2)}</span></div>
-  </div>
+  ${MARCA_FOOTER}
   <script>window.print();window.onafterprint=()=>window.close();</script>
   </body></html>`
 
-  const w = window.open("", "_blank", "width=860,height=940")
-  if (!w) return
-  w.document.write(html)
-  w.document.close()
+  openPrintWindow(html, 860, 960)
 }
 
 function EstadoBadge({ estado }: { estado: string }) {

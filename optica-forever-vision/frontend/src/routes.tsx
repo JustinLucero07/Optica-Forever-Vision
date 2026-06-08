@@ -22,6 +22,7 @@ import Usuarios from "@/pages/Usuarios"
 import Configuracion from "@/pages/Configuracion"
 import SRIImport from "@/pages/SRIImport"
 import Proveedores from "@/pages/Proveedores"
+import Presupuestos from "@/pages/Presupuestos"
 import { useAuthStore } from "@/store/auth"
 
 function RequireAuth() {
@@ -36,14 +37,6 @@ function RedirectIfAuth() {
   return <LoginPage />
 }
 
-function Proximamente({ titulo }: { titulo: string }) {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-2">{titulo}</h1>
-      <p className="text-muted-foreground">Módulo en desarrollo — disponible próximamente.</p>
-    </div>
-  )
-}
 
 export const router = createBrowserRouter([
   { path: "/login", element: <RedirectIfAuth /> },
@@ -82,6 +75,7 @@ export const router = createBrowserRouter([
           { path: "creditos", element: <Creditos /> },
           { path: "cxc", element: <CuentasPorCobrar /> },
           { path: "consultas", element: <Consultas /> },
+          { path: "presupuestos", element: <Presupuestos /> },
           { path: "reportes", element: <Reportes /> },
           { path: "usuarios", element: <Usuarios /> },
           { path: "configuracion", element: <Configuracion /> },

@@ -18,11 +18,14 @@ CLAVES_PERMITIDAS = {
     "telefono_optica_2",
     "firma_electronica",
     "pais_codigo",
+    "email_admin",
+    "admin_phone",
+    "wa_mode",   # "wame" | "cloud_api"
 }
 
 
 class ConfigSet(BaseModel):
-    valor: str = Field(..., max_length=200_000)
+    valor: str = Field(..., max_length=5_000_000)
 
 
 @router.get("")

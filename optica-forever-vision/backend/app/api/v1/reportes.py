@@ -11,9 +11,9 @@ Endpoints:
   GET /reportes/ordenes          → órdenes por estado y rango
 """
 import io
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.deps import get_current_user
 from app.models.agenda import OrdenTrabajo, Turno
-from app.models.credito import CuotaCredito
+from app.models.consulta import Consulta
+from app.models.credito import Credito, CuotaCredito
 from app.models.paciente import Paciente
 from app.models.producto import Producto
 from app.models.tesoreria import Cobro, Egreso
@@ -160,6 +161,40 @@ def dashboard_kpis(
         )
     ).scalar()
 
+    # ── Comparativo mes anterior ───────────────────────────────────────────────
+    fin_mes_ant = inicio_mes - timedelta(days=1)
+    inicio_mes_ant = fin_mes_ant.replace(day=1)
+
+    ventas_mes_ant = db.execute(
+        select(func.coalesce(func.sum(Venta.total), 0)).where(
+            Venta.fecha.between(inicio_mes_ant, fin_mes_ant),
+            Venta.estado != "anulado",
+        )
+    ).scalar()
+
+    cobros_mes_ant = db.execute(
+        select(func.coalesce(func.sum(Cobro.monto), 0)).where(
+            Cobro.fecha.between(inicio_mes_ant, fin_mes_ant)
+        )
+    ).scalar()
+
+    egresos_mes_ant = db.execute(
+        select(func.coalesce(func.sum(Egreso.monto), 0)).where(
+            Egreso.fecha.between(inicio_mes_ant, fin_mes_ant)
+        )
+    ).scalar()
+
+    pacientes_mes_ant = db.execute(
+        select(func.count()).where(
+            func.date(Paciente.created_at).between(inicio_mes_ant, fin_mes_ant)
+        )
+    ).scalar()
+
+    def _pct(curr: float, prev: float) -> float | None:
+        if prev == 0:
+            return None
+        return round((curr - prev) / prev * 100, 1)
+
     return {
         "ventas_hoy": float(ventas_hoy),
         "ventas_mes": float(ventas_mes),
@@ -177,6 +212,158 @@ def dashboard_kpis(
         "cuotas_vencidas_total": float(cuotas_vencidas_total),
         "stock_bajo_count": int(stock_bajo_count),
         "cobros_hoy": float(cobros_hoy),
+        # Comparativo
+        "ventas_mes_ant": float(ventas_mes_ant),
+        "cobros_mes_ant": float(cobros_mes_ant),
+        "egresos_mes_ant": float(egresos_mes_ant),
+        "pacientes_nuevos_mes_ant": int(pacientes_mes_ant),
+        "ventas_pct": _pct(float(ventas_mes), float(ventas_mes_ant)),
+        "cobros_pct": _pct(float(cobros_mes), float(cobros_mes_ant)),
+        "egresos_pct": _pct(float(egresos_mes), float(egresos_mes_ant)),
+        "pacientes_pct": _pct(int(pacientes_mes), int(pacientes_mes_ant)),
+    }
+
+
+# ── Alertas del día ────────────────────────────────────────────────────────────
+
+@router.get("/alertas")
+def alertas_dashboard(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    hoy = date.today()
+
+    # 1. Cumpleaños próximos (hoy + 7 días)
+    cumpleanos_proximos = []
+    for delta in range(8):
+        dia = hoy + timedelta(days=delta)
+        pacientes = db.execute(
+            select(Paciente).where(
+                Paciente.fecha_nacimiento.isnot(None),
+                func.extract("month", Paciente.fecha_nacimiento) == dia.month,
+                func.extract("day",   Paciente.fecha_nacimiento) == dia.day,
+            )
+        ).scalars().all()
+        for p in pacientes:
+            cumpleanos_proximos.append({
+                "id": p.id,
+                "nombres": p.nombres,
+                "apellidos": p.apellidos,
+                "telefono": p.telefono,
+                "fecha_nacimiento": p.fecha_nacimiento.isoformat(),
+                "dias_para": delta,
+                "es_hoy": delta == 0,
+            })
+
+    # 2. Controles visuales próximos (hoy → hoy + 14 días)
+    consultas_rango = db.execute(
+        select(Consulta)
+        .where(
+            Consulta.proximo_control.isnot(None),
+            Consulta.proximo_control.between(hoy, hoy + timedelta(days=14)),
+        )
+        .order_by(Consulta.paciente_id, Consulta.fecha.desc())
+    ).scalars().all()
+
+    seen_pac: set[int] = set()
+    controles_proximos = []
+    for c in consultas_rango:
+        if c.paciente_id in seen_pac:
+            continue
+        seen_pac.add(c.paciente_id)
+        p = db.get(Paciente, c.paciente_id)
+        if p:
+            controles_proximos.append({
+                "paciente_id": p.id,
+                "nombres": p.nombres,
+                "apellidos": p.apellidos,
+                "telefono": p.telefono,
+                "proximo_control": c.proximo_control.isoformat(),
+                "dias_para": (c.proximo_control - hoy).days,
+            })
+    controles_proximos.sort(key=lambda x: x["dias_para"])
+
+    # 3. Turnos de hoy con detalle
+    turnos_rows = db.execute(
+        select(Turno, Paciente)
+        .outerjoin(Paciente, Turno.paciente_id == Paciente.id)
+        .where(Turno.fecha == hoy)
+        .order_by(Turno.hora_inicio)
+    ).all()
+
+    turnos_hoy = [
+        {
+            "id": t.id,
+            "paciente_id": t.paciente_id,
+            "nombres": p.nombres if p else "—",
+            "apellidos": p.apellidos if p else "",
+            "telefono": p.telefono if p else None,
+            "hora_inicio": t.hora_inicio.strftime("%H:%M"),
+            "hora_fin": t.hora_fin.strftime("%H:%M") if t.hora_fin else None,
+            "motivo": t.motivo,
+        }
+        for t, p in turnos_rows
+    ]
+
+    # 4. Cuotas pendientes que vencen en los próximos 7 días
+    cuotas_rows = db.execute(
+        select(CuotaCredito, Credito, Paciente)
+        .join(Credito, CuotaCredito.credito_id == Credito.id)
+        .outerjoin(Paciente, Credito.paciente_id == Paciente.id)
+        .where(
+            CuotaCredito.estado == "pendiente",
+            CuotaCredito.fecha_vencimiento.between(hoy, hoy + timedelta(days=7)),
+        )
+        .order_by(CuotaCredito.fecha_vencimiento)
+    ).all()
+
+    cuotas_proximas = [
+        {
+            "paciente_id": cr.paciente_id,
+            "nombres": p.nombres if p else "—",
+            "apellidos": p.apellidos if p else "",
+            "telefono": p.telefono if p else None,
+            "credito_numero": cr.numero,
+            "numero_cuota": q.numero_cuota,
+            "total_cuotas": cr.numero_cuotas,
+            "monto": float(q.monto - q.monto_pagado),
+            "fecha_vencimiento": q.fecha_vencimiento.isoformat(),
+            "dias_para": (q.fecha_vencimiento - hoy).days,
+        }
+        for q, cr, p in cuotas_rows
+    ]
+
+    # 5. Órdenes listas sin retirar (≥ 3 días en estado "listo")
+    limite_dt = datetime.now() - timedelta(days=3)
+    ordenes_rows = db.execute(
+        select(OrdenTrabajo, Paciente)
+        .outerjoin(Paciente, OrdenTrabajo.paciente_id == Paciente.id)
+        .where(
+            OrdenTrabajo.estado == "listo",
+            OrdenTrabajo.updated_at <= limite_dt,
+        )
+        .order_by(OrdenTrabajo.updated_at)
+    ).all()
+
+    ordenes_sin_retirar = [
+        {
+            "id": o.id,
+            "numero": o.numero,
+            "paciente_id": o.paciente_id,
+            "nombres": p.nombres if p else "—",
+            "apellidos": p.apellidos if p else "",
+            "telefono": p.telefono if p else None,
+            "dias_esperando": (datetime.now() - o.updated_at).days,
+        }
+        for o, p in ordenes_rows
+    ]
+
+    return {
+        "cumpleanos_proximos": cumpleanos_proximos,
+        "controles_proximos": controles_proximos,
+        "turnos_hoy": turnos_hoy,
+        "cuotas_proximas": cuotas_proximas,
+        "ordenes_sin_retirar": ordenes_sin_retirar,
     }
 
 
@@ -580,3 +767,49 @@ def analytics(
         db.rollback()
 
     return result
+
+
+# ── Pacientes inactivos ────────────────────────────────────────────────────────
+
+@router.get("/pacientes-inactivos")
+def pacientes_inactivos(
+    meses: int = Query(default=12, ge=1, le=60),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from sqlalchemy import or_ as sql_or
+    limite = date.today() - timedelta(days=meses * 30)
+
+    subq = (
+        select(Consulta.paciente_id, func.max(Consulta.fecha).label("ultima_consulta"))
+        .group_by(Consulta.paciente_id)
+        .subquery()
+    )
+
+    rows = db.execute(
+        select(Paciente, subq.c.ultima_consulta)
+        .outerjoin(subq, Paciente.id == subq.c.paciente_id)
+        .where(
+            sql_or(
+                subq.c.ultima_consulta < limite,
+                subq.c.ultima_consulta.is_(None),
+            )
+        )
+        .order_by(subq.c.ultima_consulta.desc().nullslast())
+        .limit(300)
+    ).all()
+
+    hoy = date.today()
+    data = [
+        {
+            "id": p.id,
+            "numero": p.numero,
+            "nombres": p.nombres,
+            "apellidos": p.apellidos,
+            "telefono": p.telefono,
+            "ultima_consulta": uc.isoformat() if uc else None,
+            "meses_inactivo": round((hoy - uc).days / 30) if uc else None,
+        }
+        for p, uc in rows
+    ]
+    return {"filas": data, "meses_filtro": meses, "total": len(data)}

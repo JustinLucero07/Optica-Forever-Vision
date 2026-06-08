@@ -3,15 +3,16 @@ import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Search, Pencil, Eye, Trash2, Loader2 } from "lucide-react"
+import { Plus, Search, Pencil, Eye, Trash2, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
 import { useAuthStore } from "@/store/auth"
+import { Paginador } from "@/components/ui/Paginador"
 
 interface Paciente {
   id: number
@@ -26,6 +27,19 @@ interface Paciente {
   email: string | null
   direccion: string | null
   ocupacion: string | null
+  foto: string | null
+  armazon_tipo: string | null
+  armazon_notas: string | null
+}
+
+function PacAvatar({ nombre, foto }: { nombre: string; foto: string | null | undefined }) {
+  const initials = nombre.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()
+  if (foto) return <img src={foto} alt={nombre} className="h-8 w-8 rounded-full object-cover shrink-0" />
+  return (
+    <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+      {initials}
+    </div>
+  )
 }
 
 interface PacienteForm {
@@ -41,6 +55,8 @@ interface PacienteForm {
   ocupacion: string
   origen: string
   referido_por: string
+  armazon_tipo: string
+  armazon_notas: string
 }
 
 function toPayload(f: PacienteForm) {
@@ -57,14 +73,20 @@ function toPayload(f: PacienteForm) {
     ocupacion: f.ocupacion || null,
     origen: f.origen || null,
     referido_por: f.referido_por || null,
+    armazon_tipo: f.armazon_tipo?.trim() || null,
+    armazon_notas: f.armazon_notas?.trim() || null,
   }
 }
 
 export default function Pacientes() {
   const [busqueda, setBusqueda] = useState("")
+  const [page, setPage]       = useState(1)
+  const [perPage, setPerPage] = useState(20)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editando, setEditando] = useState<Paciente | null>(null)
   const [eliminando, setEliminando] = useState<Paciente | null>(null)
+  const [sortCol, setSortCol] = useState<"nombre" | "cedula" | "">("")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const qc = useQueryClient()
   const rol = useAuthStore((s) => s.user?.role)
 
@@ -79,24 +101,24 @@ export default function Pacientes() {
   const crearMut = useMutation({
     mutationFn: (d: PacienteForm) => api.post("/pacientes", toPayload(d)),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["pacientes"] }); cerrarDialog(); toast.success("Paciente creado") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al crear"),
+    onError: (e) => toast.error(errMsg(e, "Error al crear")),
   })
 
   const editarMut = useMutation({
     mutationFn: (d: PacienteForm) => api.put(`/pacientes/${editando!.id}`, toPayload(d)),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["pacientes"] }); cerrarDialog(); toast.success("Paciente actualizado") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al actualizar"),
+    onError: (e) => toast.error(errMsg(e, "Error al actualizar")),
   })
 
   const eliminarMut = useMutation({
     mutationFn: (id: number) => api.delete(`/pacientes/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["pacientes"] }); setEliminando(null); toast.success("Paciente eliminado") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al eliminar"),
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
   })
 
   function abrirNuevo() {
     setEditando(null)
-    reset({ cedula: "", nombres: "", apellidos: "", fecha_nacimiento: "", genero: "", telefono: "", telefono_2: "", email: "", direccion: "", ocupacion: "", origen: "", referido_por: "" })
+    reset({ cedula: "", nombres: "", apellidos: "", fecha_nacimiento: "", genero: "", telefono: "", telefono_2: "", email: "", direccion: "", ocupacion: "", origen: "", referido_por: "", armazon_tipo: "", armazon_notas: "" })
     setDialogOpen(true)
   }
 
@@ -115,6 +137,8 @@ export default function Pacientes() {
       ocupacion: p.ocupacion ?? "",
       origen: (p as any).origen ?? "",
       referido_por: (p as any).referido_por ?? "",
+      armazon_tipo: p.armazon_tipo ?? "",
+      armazon_notas: p.armazon_notas ?? "",
     })
     setDialogOpen(true)
   }
@@ -130,10 +154,37 @@ export default function Pacientes() {
 
   const cargandoMut = crearMut.isPending || editarMut.isPending
 
+  function SortHeader({ col, label }: { col: string; label: string }) {
+    const active = sortCol === col
+    return (
+      <button
+        className="flex items-center gap-1 hover:text-foreground transition-colors"
+        onClick={() => {
+          if (active) setSortDir(d => d === "asc" ? "desc" : "asc")
+          else { setSortCol(col as any); setSortDir("asc") }
+        }}
+      >
+        {label}
+        {active ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 opacity-40" />}
+      </button>
+    )
+  }
+
+  const pacientesFiltrados: Paciente[] = pacientes
+  const pacientesSorted = [...pacientesFiltrados].sort((a, b) => {
+    if (!sortCol) return 0
+    const va = sortCol === "nombre" ? `${a.apellidos} ${a.nombres}` : (a as any)[sortCol] ?? ""
+    const vb = sortCol === "nombre" ? `${b.apellidos} ${b.nombres}` : (b as any)[sortCol] ?? ""
+    return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va)
+  })
+
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-5 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Pacientes</h1>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Pacientes</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{pacientes.length} registros encontrados</p>
+        </div>
         {(rol === "admin" || rol === "optometrista" || rol === "vendedor") && (
           <Button onClick={abrirNuevo}>
             <Plus className="h-4 w-4 mr-2" /> Nuevo Paciente
@@ -141,54 +192,71 @@ export default function Pacientes() {
         )}
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
           placeholder="Buscar por nombre, cédula o teléfono…"
-          className="pl-9"
+          className="pl-10 h-10 rounded-xl"
           value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
+          onChange={(e) => { setBusqueda(e.target.value); setPage(1) }}
         />
       </div>
 
-      <div className="rounded-md border overflow-hidden">
+      <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium">Número</th>
-              <th className="text-left px-4 py-3 font-medium">Nombre</th>
-              <th className="text-left px-4 py-3 font-medium">Cédula</th>
-              <th className="text-left px-4 py-3 font-medium">Teléfono</th>
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Número</th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">
+                <SortHeader col="nombre" label="Nombre" />
+              </th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">
+                <SortHeader col="cedula" label="Cédula" />
+              </th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Teléfono</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-border/50">
             {isLoading && (
-              <tr><td colSpan={5} className="text-center py-8 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>
+              <tr><td colSpan={5} className="text-center py-12 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin inline mb-2" /><br/>Cargando pacientes…
+              </td></tr>
             )}
             {!isLoading && pacientes.length === 0 && (
-              <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No se encontraron pacientes</td></tr>
+              <tr><td colSpan={5} className="text-center py-14 text-muted-foreground">
+                <Search className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="font-medium">No se encontraron pacientes</p>
+                <p className="text-xs mt-1">Intenta con otro nombre o cédula</p>
+              </td></tr>
             )}
-            {pacientes.map((p: Paciente) => (
-              <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+            {pacientesSorted.slice((page - 1) * perPage, page * perPage).map((p: Paciente, i: number) => (
+              <tr key={p.id} className="hover:bg-muted/30 transition-colors table-row-anim"
+                  style={{ animationDelay: `${i * 25}ms` }}>
                 <td className="px-4 py-3">
-                  <Badge variant="outline">{p.numero}</Badge>
+                  <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded-lg text-muted-foreground">{p.numero}</span>
                 </td>
-                <td className="px-4 py-3 font-medium">{p.apellidos}, {p.nombres}</td>
-                <td className="px-4 py-3 text-muted-foreground">{p.cedula ?? "—"}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <PacAvatar nombre={p.nombres} foto={p.foto} />
+                    <span className="font-semibold">{p.apellidos}, {p.nombres}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground tabular-nums">{p.cedula ?? "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{p.telefono ?? "—"}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1 justify-end">
-                    <Button variant="ghost" size="sm" asChild>
+                    <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0">
                       <Link to={`/pacientes/${p.id}`}><Eye className="h-4 w-4" /></Link>
                     </Button>
                     {(rol === "admin" || rol === "optometrista" || rol === "vendedor") && (
-                      <Button variant="ghost" size="sm" onClick={() => abrirEditar(p)}>
+                      <Button variant="ghost" size="sm" onClick={() => abrirEditar(p)} className="h-8 w-8 p-0">
                         <Pencil className="h-4 w-4" />
                       </Button>
                     )}
                     {rol === "admin" && (
-                      <Button variant="ghost" size="sm" onClick={() => setEliminando(p)} className="text-destructive hover:text-destructive">
+                      <Button variant="ghost" size="sm" onClick={() => setEliminando(p)}
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     )}
@@ -198,6 +266,7 @@ export default function Pacientes() {
             ))}
           </tbody>
         </table>
+        <Paginador page={page} total={pacientesSorted.length} perPage={perPage} onChange={setPage} onPerPageChange={n => { setPerPage(n); setPage(1) }} />
       </div>
 
       {/* Dialog crear/editar */}
@@ -266,6 +335,34 @@ export default function Pacientes() {
             <div className="space-y-1">
               <Label>Referido por (nombre)</Label>
               <Input placeholder="Ej: Dr. García, María López..." {...register("referido_por")} />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label>Tipo de armazón preferido</Label>
+              <select
+                {...register("armazon_tipo")}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">— Sin especificar —</option>
+                <option value="Metálico">Metálico</option>
+                <option value="Plástico / Acetato">Plástico / Acetato</option>
+                <option value="Sin armazón (dry)">Sin armazón (dry)</option>
+                <option value="Deportivo">Deportivo</option>
+                <option value="Mariposa">Mariposa</option>
+                <option value="Redondo">Redondo</option>
+                <option value="Rectangular">Rectangular</option>
+                <option value="Aviador">Aviador</option>
+                <option value="Ovalado">Ovalado</option>
+                <option value="Cuadrado">Cuadrado</option>
+              </select>
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label>Notas de preferencias ópticas</Label>
+              <textarea
+                {...register("armazon_notas")}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                rows={2}
+                placeholder="Color preferido, material, tamaño de cara, etc."
+              />
             </div>
           </DialogBody>
           <DialogFooter>

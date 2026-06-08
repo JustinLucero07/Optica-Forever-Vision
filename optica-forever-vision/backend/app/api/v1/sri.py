@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
@@ -117,9 +117,26 @@ async def importar_xml(
     except ET.ParseError as exc:
         raise HTTPException(400, detail=f"XML inválido: {exc}")
 
+    # El SRI envía dos formatos:
+    # 1. XML directo: <factura>...</factura>
+    # 2. XML autorizado (del portal/email): <autorizacion><comprobante><![CDATA[...]]></comprobante></autorizacion>
+    outer_tag = root.tag.split("}")[-1] if "}" in root.tag else root.tag
+    if outer_tag in ("autorizacion", "autorizaciones"):
+        comp_el = root.find(".//comprobante")
+        if comp_el is None or not (comp_el.text or "").strip():
+            raise HTTPException(400, detail="XML de autorización SRI sin <comprobante> o vacío")
+        try:
+            root = ET.fromstring(comp_el.text.strip())
+        except ET.ParseError as exc:
+            raise HTTPException(400, detail=f"Comprobante interno inválido: {exc}")
+
     tag = root.tag.split("}")[-1] if "}" in root.tag else root.tag
     if tag not in ("factura", "notaCredito", "notaDebito", "liquidacion"):
-        raise HTTPException(400, detail="No es un comprobante SRI reconocido")
+        raise HTTPException(
+            400,
+            detail=f"No es un comprobante SRI reconocido (tipo encontrado: '{tag}'). "
+                   "Sube el archivo .xml de la factura (no el PDF/RIDE).",
+        )
 
     info_trib = root.find("infoTributaria")
     info_fact = root.find("infoFactura") or root.find("infoNotaCredito") or root.find("infoLiquidacionCompra")
@@ -315,7 +332,7 @@ def listar_mapeos(
     return result
 
 
-@router.delete("/mapeos/{map_id}", status_code=204)
+@router.delete("/mapeos/{map_id}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_mapeo(
     map_id: int,
     db: Session = Depends(get_db),

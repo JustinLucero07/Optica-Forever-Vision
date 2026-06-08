@@ -23,6 +23,9 @@ class Paciente(Base):
     ocupacion: Mapped[str | None] = mapped_column(String(100), nullable=True)
     origen: Mapped[str | None] = mapped_column(String(100), nullable=True)
     referido_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    foto: Mapped[str | None] = mapped_column(Text, nullable=True)
+    armazon_tipo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    armazon_notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )

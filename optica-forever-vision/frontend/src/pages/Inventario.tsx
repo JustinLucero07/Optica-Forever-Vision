@@ -8,9 +8,9 @@ import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
 import { useAuthStore } from "@/store/auth"
+import { Paginador } from "@/components/ui/Paginador"
 
 interface Categoria { id: number; nombre: string }
 interface Producto {
@@ -29,6 +29,8 @@ type EntradaForm = { cantidad: string; motivo: string }
 export default function Inventario() {
   const [busqueda, setBusqueda] = useState("")
   const [soloStockBajo, setSoloStockBajo] = useState(false)
+  const [page, setPage]       = useState(1)
+  const [perPage, setPerPage] = useState(20)
   const [dialogProd, setDialogProd] = useState(false)
   const [dialogEntrada, setDialogEntrada] = useState(false)
   const [editando, setEditando] = useState<Producto | null>(null)
@@ -108,10 +110,11 @@ export default function Inventario() {
   const stockBajoCount = productos.filter(p => p.stock_actual <= p.stock_minimo).length
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-5 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Inventario</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Inventario</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{productos.length} productos</p>
           {stockBajoCount > 0 && (
             <p className="text-sm text-amber-600 flex items-center gap-1 mt-0.5">
               <AlertTriangle className="h-3.5 w-3.5" /> {stockBajoCount} producto{stockBajoCount > 1 ? "s" : ""} con stock bajo
@@ -125,59 +128,66 @@ export default function Inventario() {
 
       <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar por nombre o código…" className="pl-9" value={busqueda} onChange={e => setBusqueda(e.target.value)} />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input placeholder="Buscar por nombre o código…" className="pl-10 rounded-xl" value={busqueda}
+                 onChange={e => { setBusqueda(e.target.value); setPage(1) }} />
         </div>
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" checked={soloStockBajo} onChange={e => setSoloStockBajo(e.target.checked)} className="rounded" />
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input type="checkbox" checked={soloStockBajo}
+                 onChange={e => { setSoloStockBajo(e.target.checked); setPage(1) }} className="rounded accent-primary" />
           Solo stock bajo
         </label>
       </div>
 
-      <div className="rounded-md border overflow-hidden">
+      <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium">Código</th>
-              <th className="text-left px-4 py-3 font-medium">Nombre</th>
-              <th className="text-left px-4 py-3 font-medium">Categoría</th>
-              <th className="text-right px-4 py-3 font-medium">P. Costo</th>
-              <th className="text-right px-4 py-3 font-medium">P. Venta</th>
-              <th className="text-right px-4 py-3 font-medium">Stock</th>
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Código</th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Nombre</th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Categoría</th>
+              <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">P. Costo</th>
+              <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">P. Venta</th>
+              <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Stock</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y">
-            {isLoading && <tr><td colSpan={7} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>}
+          <tbody className="divide-y divide-border/50">
+            {isLoading && <tr><td colSpan={7} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin inline" /></td></tr>}
             {!isLoading && productos.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">No se encontraron productos</td></tr>
+              <tr><td colSpan={7} className="text-center py-14 text-muted-foreground">
+                <Package className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="font-medium">No se encontraron productos</p>
+              </td></tr>
             )}
-            {productos.map(p => (
-              <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${!p.activo ? "opacity-50" : ""}`}>
-                <td className="px-4 py-3 text-muted-foreground text-xs">{p.codigo ?? "—"}</td>
-                <td className="px-4 py-3 font-medium">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-muted-foreground shrink-0" />
-                    {p.nombre}
-                  </div>
+            {productos.slice((page - 1) * perPage, page * perPage).map((p, i) => (
+              <tr key={p.id} className={`hover:bg-muted/30 transition-colors table-row-anim ${!p.activo ? "opacity-40" : ""}`}
+                  style={{ animationDelay: `${i * 25}ms` }}>
+                <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{p.codigo ?? "—"}</td>
+                <td className="px-4 py-3 font-semibold">{p.nombre}</td>
+                <td className="px-4 py-3">
+                  {p.categoria ? (
+                    <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{p.categoria.nombre}</span>
+                  ) : <span className="text-muted-foreground">—</span>}
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{p.categoria?.nombre ?? "—"}</td>
-                <td className="px-4 py-3 text-right">${Number(p.precio_costo).toFixed(2)}</td>
-                <td className="px-4 py-3 text-right font-medium">${Number(p.precio_venta).toFixed(2)}</td>
+                <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">${Number(p.precio_costo).toFixed(2)}</td>
+                <td className="px-4 py-3 text-right font-bold tabular-nums">${Number(p.precio_venta).toFixed(2)}</td>
                 <td className="px-4 py-3 text-right">
-                  <span className={`font-medium ${p.stock_actual <= p.stock_minimo ? "text-amber-600" : ""}`}>
+                  <span className={`font-semibold tabular-nums ${p.stock_actual <= p.stock_minimo ? "text-amber-600" : ""}`}>
                     {Number(p.stock_actual).toFixed(0)} {p.unidad}
                   </span>
-                  {p.stock_actual <= p.stock_minimo && <AlertTriangle className="h-3.5 w-3.5 text-amber-600 inline ml-1" />}
+                  {p.stock_actual <= p.stock_minimo && (
+                    <span className="ml-1.5 text-xs bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">⚠</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1 justify-end">
                     {(rol === "admin" || rol === "vendedor") && (
                       <>
-                        <Button variant="ghost" size="sm" onClick={() => abrirEntrada(p)} title="Registrar entrada">
-                          <ArrowDown className="h-4 w-4 text-green-600" />
+                        <Button variant="ghost" size="sm" onClick={() => abrirEntrada(p)} title="Registrar entrada" className="h-8 w-8 p-0">
+                          <ArrowDown className="h-4 w-4 text-emerald-600" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => abrirEditar(p)}>
+                        <Button variant="ghost" size="sm" onClick={() => abrirEditar(p)} className="h-8 w-8 p-0">
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </>
@@ -188,6 +198,7 @@ export default function Inventario() {
             ))}
           </tbody>
         </table>
+        <Paginador page={page} total={productos.length} perPage={perPage} onChange={setPage} onPerPageChange={n => { setPerPage(n); setPage(1) }} />
       </div>
 
       {/* Dialog Producto */}

@@ -13,23 +13,31 @@ class TurnoCreate(BaseModel):
     paciente_id: int | None = None
     optometrista_id: int | None = None
     fecha: date
-    hora_inicio: str  # "HH:MM"
-    hora_fin: str | None = None
+    hora_inicio: time
+    hora_fin: time | None = None
     motivo: str
     estado: str = "pendiente"
     notas: str | None = None
 
     @field_validator("hora_inicio", "hora_fin", mode="before")
     @classmethod
-    def normalize_time(cls, v):
+    def parse_time(cls, v):
+        if v is None:
+            return v
         if isinstance(v, time):
-            return v.strftime("%H:%M")
+            return v
+        if isinstance(v, str) and v:
+            parts = v.split(":")
+            try:
+                return time(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 0)
+            except (ValueError, IndexError):
+                pass
         return v
 
 
 class TurnoUpdate(TurnoCreate):
     fecha: date | None = None
-    hora_inicio: str | None = None
+    hora_inicio: time | None = None
     motivo: str | None = None
 
 
@@ -39,8 +47,8 @@ class TurnoOut(BaseModel):
     optometrista_id: int | None
     creado_por_id: int
     fecha: date
-    hora_inicio: str
-    hora_fin: str | None
+    hora_inicio: time
+    hora_fin: time | None
     motivo: str
     estado: str
     notas: str | None
@@ -88,6 +96,7 @@ class OrdenOut(BaseModel):
     id: int
     numero: str
     paciente_id: int
+    paciente_nombre: str | None = None
     consulta_id: int | None
     venta_id: int | None
     proveedor_id: int | None
