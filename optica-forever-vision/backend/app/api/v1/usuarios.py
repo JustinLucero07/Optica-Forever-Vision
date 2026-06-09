@@ -47,6 +47,8 @@ def actualizar(uid: int, data: UserUpdate, db: Session = Depends(get_db), me: Us
         user.is_active = data.is_active
     if data.password:
         user.password_hash = hash_password(data.password)
+    if data.firma_url is not None:
+        user.firma_url = data.firma_url or None
     db.commit()
     db.refresh(user)
     return user

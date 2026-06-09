@@ -71,6 +71,29 @@ class Egreso(Base):
     )
 
 
+class Transferencia(Base):
+    __tablename__ = "transferencias_cuentas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    numero: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    fecha: Mapped[date] = mapped_column(Date, nullable=False)
+    cuenta_origen_id: Mapped[int] = mapped_column(
+        ForeignKey("cuentas_bancarias.id", ondelete="RESTRICT"), nullable=False
+    )
+    cuenta_destino_id: Mapped[int] = mapped_column(
+        ForeignKey("cuentas_bancarias.id", ondelete="RESTRICT"), nullable=False
+    )
+    monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    concepto: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usuario_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default=func.now()
+    )
+
+
 class CuentaPorPagar(Base):
     __tablename__ = "cuentas_por_pagar"
 

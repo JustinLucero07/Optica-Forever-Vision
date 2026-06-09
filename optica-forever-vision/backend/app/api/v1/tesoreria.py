@@ -8,14 +8,15 @@ from app.core.deps import get_current_user, require_roles
 from app.core.db import get_db
 from app.core.numeradores import siguiente_numero
 from app.models.cxp_item import CxPItem
-from app.models.tesoreria import CuentaBancaria, Cobro, CuentaPorPagar, Egreso
+from app.models.tesoreria import CuentaBancaria, Cobro, CuentaPorPagar, Egreso, Transferencia
 from app.models.venta import Venta
 from app.models.user import User
 from app.schemas.tesoreria import (
     CobroCreate, CobroOut,
-    CuentaBancariaOut,
+    CuentaBancariaCreate, CuentaBancariaOut,
     CxPCreate, CxPOut, CxPPago,
     EgresoCreate, EgresoOut,
+    TransferenciaCreate, TransferenciaOut,
 )
 
 router = APIRouter(tags=["tesoreria"])
@@ -26,6 +27,41 @@ router = APIRouter(tags=["tesoreria"])
 @router.get("/cuentas-bancarias", response_model=list[CuentaBancariaOut])
 def listar_cuentas(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     return db.execute(select(CuentaBancaria).order_by(CuentaBancaria.nombre)).scalars().all()
+
+
+@router.post("/cuentas-bancarias", response_model=CuentaBancariaOut, status_code=201)
+def crear_cuenta(
+    data: CuentaBancariaCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    cuenta = CuentaBancaria(
+        nombre=data.nombre,
+        tipo=data.tipo,
+        saldo_actual=data.saldo_inicial,
+        activa=True,
+    )
+    db.add(cuenta)
+    db.commit()
+    db.refresh(cuenta)
+    return cuenta
+
+
+@router.put("/cuentas-bancarias/{cid}", response_model=CuentaBancariaOut)
+def actualizar_cuenta(
+    cid: int,
+    data: CuentaBancariaCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    cuenta = db.get(CuentaBancaria, cid)
+    if not cuenta:
+        raise HTTPException(404, detail="Cuenta no encontrada")
+    cuenta.nombre = data.nombre
+    cuenta.tipo = data.tipo
+    db.commit()
+    db.refresh(cuenta)
+    return cuenta
 
 
 # ── Cobros ─────────────────────────────────────────────────────────────────────
@@ -130,6 +166,8 @@ def crear_egreso(
     ).scalar_one_or_none()
     if not cuenta:
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    if float(cuenta.saldo_actual) < data.monto:
+        raise HTTPException(status_code=422, detail=f"Saldo insuficiente en {cuenta.nombre} — disponible: ${float(cuenta.saldo_actual):.2f}")
 
     numero = siguiente_numero(db, "numerador_egreso", "EGR")
     egreso = Egreso(numero=numero, usuario_id=current.id, **data.model_dump())
@@ -213,6 +251,8 @@ def registrar_pago_cxp(
     ).scalar_one_or_none()
     if not cuenta:
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    if float(cuenta.saldo_actual) < data.monto:
+        raise HTTPException(status_code=422, detail=f"Saldo insuficiente en {cuenta.nombre} — disponible: ${float(cuenta.saldo_actual):.2f}")
 
     numero = siguiente_numero(db, "numerador_egreso", "EGR")
     egreso = Egreso(
@@ -284,3 +324,54 @@ def vincular_item_producto(
     item.producto_id = producto_id
     db.commit()
     return {"ok": True}
+
+
+# ── Transferencias entre cuentas ───────────────────────────────────────────────
+
+@router.get("/transferencias", response_model=list[TransferenciaOut])
+def listar_transferencias(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    return db.execute(
+        select(Transferencia).order_by(Transferencia.fecha.desc(), Transferencia.id.desc()).offset(skip).limit(limit)
+    ).scalars().all()
+
+
+@router.post("/transferencias", response_model=TransferenciaOut, status_code=status.HTTP_201_CREATED)
+def crear_transferencia(
+    data: TransferenciaCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_roles("admin", "cajero")),
+):
+    if data.monto <= 0:
+        raise HTTPException(status_code=422, detail="El monto debe ser positivo")
+    if data.cuenta_origen_id == data.cuenta_destino_id:
+        raise HTTPException(status_code=422, detail="Las cuentas de origen y destino deben ser distintas")
+
+    origen = db.execute(
+        select(CuentaBancaria).where(CuentaBancaria.id == data.cuenta_origen_id).with_for_update()
+    ).scalar_one_or_none()
+    if not origen:
+        raise HTTPException(status_code=404, detail="Cuenta origen no encontrada")
+    if float(origen.saldo_actual) < data.monto:
+        raise HTTPException(status_code=422, detail=f"Saldo insuficiente en {origen.nombre} (${float(origen.saldo_actual):.2f})")
+
+    destino = db.execute(
+        select(CuentaBancaria).where(CuentaBancaria.id == data.cuenta_destino_id).with_for_update()
+    ).scalar_one_or_none()
+    if not destino:
+        raise HTTPException(status_code=404, detail="Cuenta destino no encontrada")
+
+    numero = siguiente_numero(db, "numerador_transferencia", "TRF")
+    t = Transferencia(numero=numero, usuario_id=current.id, **data.model_dump())
+    db.add(t)
+
+    origen.saldo_actual = float(origen.saldo_actual) - data.monto
+    destino.saldo_actual = float(destino.saldo_actual) + data.monto
+
+    db.commit()
+    db.refresh(t)
+    return t

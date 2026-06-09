@@ -4,7 +4,7 @@ import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Loader2, CreditCard, ChevronDown, ChevronUp, Printer } from "lucide-react"
+import { Plus, Loader2, CreditCard, ChevronDown, ChevronUp, Printer, UserCheck } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
@@ -180,6 +180,7 @@ export default function Creditos() {
   const [pacienteId, setPacienteId] = useState("")
   const qc = useQueryClient()
   const rol = useAuthStore((s) => s.user?.role)
+  const currentUser = useAuthStore((s) => s.user)
   const hoy = new Date().toISOString().slice(0, 10)
 
   const { data: config } = useQuery<Record<string, string>>({
@@ -208,6 +209,13 @@ export default function Creditos() {
     queryKey: ["ventas-pendientes"],
     queryFn: () => api.get("/ventas", { params: { estado: "pendiente", limit: 200 } }).then(r => r.data),
     enabled: dialogNuevo,
+  })
+
+  const { data: pacienteSel } = useQuery<{ referido_por?: string | null; referido_a_nombre?: string | null; origen?: string | null }>({
+    queryKey: ["paciente", pacienteId],
+    queryFn: () => api.get(`/pacientes/${pacienteId}`).then(r => r.data),
+    enabled: !!pacienteId && dialogNuevo,
+    staleTime: 60_000,
   })
 
 
@@ -245,7 +253,7 @@ export default function Creditos() {
       toast.success("Pago registrado")
       // print receipt
       const cuotaActualizada = creditoActualizado.cuotas?.find(q => q.id === cuotaPagada.id)
-      if (cuotaActualizada) printComprobante(creditoActualizado, cuotaActualizada, config?.firma_electronica ?? "")
+      if (cuotaActualizada) printComprobante(creditoActualizado, cuotaActualizada, currentUser?.firma_url ?? config?.firma_electronica ?? "")
     },
     onError: (e) => toast.error(errMsg(e, "Error")),
   })
@@ -367,7 +375,7 @@ export default function Creditos() {
                         <Button
                           variant="ghost" size="sm"
                           title="Formato de aceptación de crédito"
-                          onClick={() => printAceptacionCredito(c, c.venta_id ? `Venta ${c.venta_id}` : "Productos óptica", config?.firma_electronica ?? "")}
+                          onClick={() => printAceptacionCredito(c, c.venta_id ? `Venta ${c.venta_id}` : "Productos óptica", currentUser?.firma_url ?? config?.firma_electronica ?? "")}
                         >
                           <Printer className="h-4 w-4 text-indigo-500" />
                         </Button>
@@ -414,7 +422,7 @@ export default function Creditos() {
                                           <Button variant="outline" size="sm" onClick={() => abrirPago(creditoDetalle, q)}>Pagar</Button>
                                         )}
                                         {q.estado === "pagado" && (
-                                          <Button variant="ghost" size="sm" onClick={() => printComprobante(creditoDetalle, q, config?.firma_electronica ?? "")}>
+                                          <Button variant="ghost" size="sm" onClick={() => printComprobante(creditoDetalle, q, currentUser?.firma_url ?? config?.firma_electronica ?? "")}>
                                             <Printer className="h-3 w-3" />
                                           </Button>
                                         )}
@@ -477,6 +485,25 @@ export default function Creditos() {
               <div className="space-y-1">
                 <Label>Paciente (opcional)</Label>
                 <PacienteCombobox value={pacienteId} onChange={setPacienteId} />
+                {(pacienteSel?.referido_por || pacienteSel?.referido_a_nombre) && (
+                  <div className="mt-1.5 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 text-sm space-y-1">
+                    {pacienteSel.referido_por && (
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        <span className="text-amber-700 dark:text-amber-400">Referido por: <strong>{pacienteSel.referido_por}</strong></span>
+                      </div>
+                    )}
+                    {pacienteSel.referido_a_nombre && (
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                        <span className="text-blue-700 dark:text-blue-400">Al optometrista: <strong>{pacienteSel.referido_a_nombre}</strong></span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {pacienteSel?.origen && (
+                  <p className="text-xs text-muted-foreground pl-1">Canal: {pacienteSel.origen}</p>
+                )}
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">

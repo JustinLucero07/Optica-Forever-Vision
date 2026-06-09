@@ -71,6 +71,36 @@ def crear_paciente(
     return paciente
 
 
+@router.get("/referidos-stats")
+def referidos_stats(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    pacientes = db.execute(
+        select(Paciente)
+        .where(Paciente.referido_por.isnot(None), Paciente.referido_por != "")
+        .order_by(Paciente.apellidos, Paciente.nombres)
+    ).scalars().all()
+
+    grupos: dict[str, list] = {}
+    for p in pacientes:
+        key = (p.referido_por or "").strip()
+        if not key:
+            continue
+        grupos.setdefault(key, []).append({
+            "id": p.id,
+            "nombre": f"{p.apellidos} {p.nombres}",
+            "numero": p.numero,
+            "referido_a_usuario_id": p.referido_a_usuario_id,
+            "referido_a_nombre": p.referido_a_nombre,
+        })
+
+    return sorted(
+        [{"referido_por": k, "total": len(v), "pacientes": v} for k, v in grupos.items()],
+        key=lambda x: -x["total"],
+    )
+
+
 @router.get("/{pid}", response_model=PacienteOut)
 def obtener_paciente(
     pid: int,

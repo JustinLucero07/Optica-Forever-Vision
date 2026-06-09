@@ -1,13 +1,15 @@
 import { useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { Search, Loader2, Stethoscope } from "lucide-react"
+import { Search, Loader2, Stethoscope, Plus } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Paginador } from "@/components/ui/Paginador"
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
+import PacienteCombobox from "@/components/PacienteCombobox"
 
 function fmtDate(s: string) {
   const [y, m, d] = s.slice(0, 10).split("-")
@@ -38,11 +40,16 @@ interface Consulta {
 const PAGE = 50
 
 export default function Consultas() {
+  const navigate = useNavigate()
   const [busqueda, setBusqueda] = useState("")
   const [q, setQ] = useState("")
   const [skip, setSkip] = useState(0)
   const [perPage, setPerPage] = useState(15)
   const [pageLocal, setPageLocal] = useState(1)
+  const [modalNueva, setModalNueva] = useState(false)
+  const [pacSelId, setPacSelId] = useState("")
+  const [desde, setDesde] = useState("")
+  const [hasta, setHasta] = useState("")
 
   const { data: consultas = [], isLoading } = useQuery<Consulta[]>({
     queryKey: ["consultas-global", q, skip],
@@ -56,7 +63,13 @@ export default function Consultas() {
     setPageLocal(1)
   }
 
-  const paged = consultas.slice((pageLocal - 1) * perPage, pageLocal * perPage)
+  const filtradas = consultas.filter(c => {
+    if (desde && c.fecha < desde) return false
+    if (hasta && c.fecha > hasta) return false
+    return true
+  })
+
+  const paged = filtradas.slice((pageLocal - 1) * perPage, pageLocal * perPage)
 
   return (
     <div className="p-6 space-y-4">
@@ -65,21 +78,41 @@ export default function Consultas() {
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Stethoscope className="h-6 w-6" /> Consultas
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Para crear una consulta, ve al paciente y haz clic en "Nueva Consulta"
-          </p>
         </div>
-        <Button asChild variant="outline">
-          <Link to="/pacientes">Buscar paciente →</Link>
+        <Button onClick={() => { setPacSelId(""); setModalNueva(true) }}>
+          <Plus className="h-4 w-4 mr-1" /> Nueva consulta
         </Button>
       </div>
 
-      {/* Búsqueda */}
-      <div className="flex gap-2 max-w-md">
-        <div className="relative flex-1">
+      {/* Modal nueva consulta */}
+      <Dialog open={modalNueva} onClose={() => setModalNueva(false)} className="max-w-md">
+        <DialogHeader>
+          <h2 className="text-lg font-semibold">Nueva consulta</h2>
+        </DialogHeader>
+        <DialogBody>
+          <p className="text-sm text-muted-foreground mb-3">Selecciona el paciente para continuar.</p>
+          <PacienteCombobox
+            value={pacSelId}
+            onChange={id => setPacSelId(id)}
+          />
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setModalNueva(false)}>Cancelar</Button>
+          <Button
+            disabled={!pacSelId}
+            onClick={() => { setModalNueva(false); navigate(`/pacientes/${pacSelId}/consultas/nueva`) }}
+          >
+            Continuar →
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Búsqueda y filtros */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pl-9"
+            className="pl-9 w-72"
             placeholder="Paciente, cédula o número de consulta..."
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
@@ -87,6 +120,15 @@ export default function Consultas() {
           />
         </div>
         <Button onClick={buscar}>Buscar</Button>
+        <div className="flex items-center gap-1 ml-2">
+          <span className="text-xs text-muted-foreground">Desde</span>
+          <Input type="date" className="h-9 w-36 text-sm" value={desde} onChange={e => { setDesde(e.target.value); setPageLocal(1) }} />
+          <span className="text-xs text-muted-foreground">Hasta</span>
+          <Input type="date" className="h-9 w-36 text-sm" value={hasta} onChange={e => { setHasta(e.target.value); setPageLocal(1) }} />
+          {(desde || hasta) && (
+            <button className="text-xs text-muted-foreground hover:text-foreground underline" onClick={() => { setDesde(""); setHasta("") }}>Limpiar</button>
+          )}
+        </div>
       </div>
 
       {/* Tabla */}
@@ -109,10 +151,10 @@ export default function Consultas() {
               </tr>
             </thead>
             <tbody>
-              {consultas.length === 0 && (
+              {filtradas.length === 0 && (
                 <tr>
                   <td colSpan={7} className="text-center py-10 text-muted-foreground">
-                    {q ? `Sin resultados para "${q}"` : "Sin consultas registradas"}
+                    {q || desde || hasta ? "Sin resultados con los filtros aplicados" : "Sin consultas registradas"}
                   </td>
                 </tr>
               )}
@@ -157,10 +199,10 @@ export default function Consultas() {
       <div className="rounded-md border">
         <Paginador
           page={pageLocal}
-          total={consultas.length}
+          total={filtradas.length}
           perPage={perPage}
           onChange={p => {
-            if (p * perPage > consultas.length && consultas.length === PAGE) {
+            if (p * perPage > filtradas.length && consultas.length === PAGE) {
               setSkip(s => s + PAGE)
               setPageLocal(1)
             } else {

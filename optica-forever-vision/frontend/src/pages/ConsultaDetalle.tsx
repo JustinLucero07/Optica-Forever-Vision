@@ -1,14 +1,14 @@
 import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Pencil, Loader2, Printer } from "lucide-react"
+import { ArrowLeft, Pencil, Loader2, Printer, Copy, CalendarPlus } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useAuthStore } from "@/store/auth"
-import { getMarcaLogo, MARCA_FOOTER, PDF_BASE_CSS } from "@/lib/pdf"
+import { getMarcaLogo, MARCA_FOOTER } from "@/lib/pdf"
 import { useBrandStore } from "@/store/brand"
 
 function Fila({ label, valor }: { label: string; valor: string | number | boolean | null | undefined }) {
@@ -41,86 +41,148 @@ function SeccionRx({ titulo, esf, cil, eje, add, av }: { titulo: string; esf?: n
 type ConsultaData = Record<string, unknown> & { recetas?: Array<{ tipo: string } & Record<string, unknown>> }
 type PacienteData = Record<string, unknown>
 
-function printCertificado(c: ConsultaData, paciente: PacienteData | undefined, conMedidas: boolean, firma = "", logo?: string | null) {
-  const nom = paciente ? `${paciente.apellidos} ${paciente.nombres}` : `Paciente #${c.paciente_id}`
-  const recLC = c.recetas?.find((r) => r.tipo === "lente_convencional")
-  const recetaHtml = conMedidas && recLC ? `
-    <table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:11px">
-      <thead><tr style="background:#e0f2fe">
-        <th style="padding:5px 8px;text-align:left;border:1px solid #bae6fd">Ojo</th>
-        <th style="padding:5px 8px;border:1px solid #bae6fd">Esf</th>
-        <th style="padding:5px 8px;border:1px solid #bae6fd">Cil</th>
-        <th style="padding:5px 8px;border:1px solid #bae6fd">Eje</th>
-        <th style="padding:5px 8px;border:1px solid #bae6fd">Add</th>
-        <th style="padding:5px 8px;border:1px solid #bae6fd">DNP</th>
-      </tr></thead>
-      <tbody>
-        <tr><td style="padding:5px 8px;border:1px solid #e5e7eb;font-weight:bold">OD</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_od_esf != null ? (Number(recLC.lc_od_esf) >= 0 ? "+" : "") + recLC.lc_od_esf : "—"}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_od_cil != null ? (Number(recLC.lc_od_cil) >= 0 ? "+" : "") + recLC.lc_od_cil : "—"}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_od_eje ?? "—"}${recLC.lc_od_eje ? "°" : ""}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_od_add != null ? "+" + recLC.lc_od_add : "—"}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_od_dnp ?? "—"}</td>
-        </tr>
-        <tr><td style="padding:5px 8px;border:1px solid #e5e7eb;font-weight:bold">OI</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_oi_esf != null ? (Number(recLC.lc_oi_esf) >= 0 ? "+" : "") + recLC.lc_oi_esf : "—"}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_oi_cil != null ? (Number(recLC.lc_oi_cil) >= 0 ? "+" : "") + recLC.lc_oi_cil : "—"}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_oi_eje ?? "—"}${recLC.lc_oi_eje ? "°" : ""}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_oi_add != null ? "+" + recLC.lc_oi_add : "—"}</td>
-          <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${recLC.lc_oi_dnp ?? "—"}</td>
-        </tr>
-      </tbody>
-    </table>
-    ${recLC.tipo_lente ? `<p style="font-size:11px;margin:4px 0"><strong>Tipo lente:</strong> ${recLC.tipo_lente}</p>` : ""}
-    ${recLC.tipo_armadura ? `<p style="font-size:11px;margin:4px 0"><strong>Armadura:</strong> ${recLC.tipo_armadura}</p>` : ""}
-  ` : conMedidas ? `<p style="color:#6b7280;font-size:11px">Sin receta registrada</p>` : ""
+function calcEdad(fechaNac: string | null | undefined): string {
+  if (!fechaNac) return ""
+  const hoy = new Date()
+  const nac = new Date(fechaNac)
+  let edad = hoy.getFullYear() - nac.getFullYear()
+  if (hoy.getMonth() < nac.getMonth() || (hoy.getMonth() === nac.getMonth() && hoy.getDate() < nac.getDate())) edad--
+  return `${edad} años`
+}
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Certificado de Consulta</title>
-  <style>${PDF_BASE_CSS}
-  .section{margin:12px 0}.section h3{font-size:11px;color:#0891b2;text-transform:uppercase;border-bottom:1px solid #e0f2fe;padding-bottom:4px;margin-bottom:8px}
-  .row{display:flex;gap:24px;margin:4px 0;font-size:11px}
-  .lbl{color:#6b7280;min-width:130px}.sig{margin-top:40px;border-top:1px solid #374151;width:200px;text-align:center;padding-top:4px;font-size:10px}
+const MESES_ES = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
+
+function fmtFechaCert(iso: string | undefined): string {
+  if (!iso) return ""
+  const d = new Date(iso + "T12:00:00")
+  return `${String(d.getDate()).padStart(2,"0")} de ${MESES_ES[d.getMonth()]} del ${d.getFullYear()}`
+}
+
+function fmtRx(v: unknown): string {
+  if (v === null || v === undefined || v === "") return ""
+  const n = Number(v)
+  if (isNaN(n)) return ""
+  return (n >= 0 ? "+" : "") + n.toFixed(2)
+}
+
+function printCertificado(c: ConsultaData, paciente: PacienteData | undefined, conMedidas: boolean, firma = "", optNombre = "", logo?: string | null) {
+  const nom = paciente ? `${(paciente.apellidos as string ?? "").toUpperCase()} ${(paciente.nombres as string ?? "").toUpperCase()}` : `Paciente #${c.paciente_id}`
+  const edad = calcEdad(paciente?.fecha_nacimiento as string | undefined)
+  const edadNum = edad ? edad.replace(" años","") : ""
+  const fechaTexto = fmtFechaCert(c.fecha as string)
+
+  const recLC = c.recetas?.find((r) => r.tipo === "lente_convencional")
+
+  // AV values
+  const avODsc = (c.avsc_od ?? c.avscod ?? "") as string
+  const avOIsc = (c.avsc_oi ?? c.avscoi ?? "") as string
+  const avAOsc = (c.avsc_ao ?? c.avscao ?? "") as string
+  const avODcc = (c.avcc_od ?? c.avccod ?? "-") as string
+  const avOIcc = (c.avcc_oi ?? c.avccoi ?? "-") as string
+
+  // RX rows
+  const rxOD = recLC ? `
+    <td>${fmtRx(recLC.lc_od_esf) || ""}</td>
+    <td>${fmtRx(recLC.lc_od_cil) || ""}</td>
+    <td>${recLC.lc_od_eje ? recLC.lc_od_eje + "°" : ""}</td>
+    <td>${recLC.lc_od_add ? "+" + recLC.lc_od_add : ""}</td>
+    <td>${recLC.lc_od_dnp ?? ""}</td>` : "<td></td><td></td><td></td><td></td><td></td>"
+
+  const rxOI = recLC ? `
+    <td>${fmtRx(recLC.lc_oi_esf) || ""}</td>
+    <td>${fmtRx(recLC.lc_oi_cil) || ""}</td>
+    <td>${recLC.lc_oi_eje ? recLC.lc_oi_eje + "°" : ""}</td>
+    <td>${recLC.lc_oi_add ? "+" + recLC.lc_oi_add : ""}</td>
+    <td>${recLC.lc_oi_dnp ?? ""}</td>` : "<td></td><td></td><td></td><td></td><td></td>"
+
+  const observaciones = [c.diagnostico, c.plan_tratamiento].filter(Boolean).join("\n")
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Certificado — ${nom}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#111;padding:28px 32px;max-width:800px;margin:auto}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0891b2;padding-bottom:10px;margin-bottom:14px}
+    .hdr-right{text-align:right;font-size:10px;color:#64748b}
+    .title{font-size:16px;font-weight:800;color:#0891b2;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center;border-bottom:1px solid #e0f2fe;padding-bottom:8px}
+    .subtitle{font-size:13px;font-weight:700;color:#1e293b;text-align:center;margin-bottom:8px}
+    .intro{font-size:12px;text-align:center;margin-bottom:4px;line-height:1.7}
+    .av-block{margin:14px 0}
+    .av-row{display:flex;gap:40px;font-size:11px;margin:3px 0}
+    .av-col{display:flex;gap:10px}
+    table.rx{width:100%;border-collapse:collapse;margin:14px 0}
+    table.rx th{background:#e0f2fe;border:1px solid #bae6fd;padding:6px 10px;text-align:center;font-size:11px;font-weight:700;color:#0c4a6e}
+    table.rx td{border:1px solid #e5e7eb;padding:8px 10px;text-align:center;font-size:12px;min-height:28px}
+    table.rx td.eye{font-weight:800;background:#f0f9ff;color:#0891b2;text-align:left;padding-left:12px}
+    .obs{margin:14px 0}
+    .obs-title{font-size:11px;font-weight:700;color:#0891b2;text-transform:uppercase;margin-bottom:6px}
+    .obs-text{font-size:11px;line-height:1.8;white-space:pre-wrap}
+    .firma-section{margin-top:32px;display:flex;justify-content:flex-end}
+    .firma-box{text-align:center;min-width:220px}
+    .firma-box img{height:50px;object-fit:contain;display:block;margin:0 auto 4px}
+    .firma-line{border-top:1px solid #374151;margin:0 auto 4px;width:200px;padding-top:5px;font-size:11px;font-weight:700}
+    .firma-sub{font-size:10px;color:#6b7280}
+    @media print{body{padding:16px}}
   </style></head><body>
-  <div class="doc-hdr">
-    <div class="doc-hdr-left">
-      ${getMarcaLogo(logo)}
-      <div class="doc-hdr-title">Certificado de Consulta Oftalmológica</div>
-    </div>
-    <div class="doc-hdr-right">
-      <div class="num">${c.numero}</div>
-      <div class="fecha">${c.fecha}</div>
+  <div class="hdr">
+    ${getMarcaLogo(logo)}
+    <div class="hdr-right">
+      <div><strong>N° ${c.numero}</strong></div>
+      <div>${c.fecha}</div>
     </div>
   </div>
-  <div class="doc-body">
-    <div class="doc-section"><h3 class="doc-section-title">Datos del paciente</h3>
-      <div class="row"><span class="lbl">Paciente:</span><strong>${nom}</strong></div>
-      ${paciente?.cedula ? `<div class="row"><span class="lbl">Cédula:</span>${paciente.cedula}</div>` : ""}
-      <div class="row"><span class="lbl">Fecha consulta:</span>${c.fecha}</div>
-      <div class="row"><span class="lbl">N° Consulta:</span>${c.numero}</div>
+
+  <div class="title">Certificado</div>
+
+  <p class="intro"><strong>Certificado de ${nom}</strong> con CI: ${paciente?.cedula ?? "—"}</p>
+  <p class="intro">Con la edad de: <strong>${edadNum} años</strong> asistió al examen Optométrico el día <strong>${fechaTexto}</strong></p>
+  <p class="intro" style="margin-top:8px">El diagnóstico presente es de: &nbsp;
+    <strong>OD:</strong> &nbsp;${c.rx_od_esf != null ? "" : "EMETROPE."}&nbsp;&nbsp;&nbsp;&nbsp;
+    <strong>AV AO S/C:</strong> ${avAOsc || "—"}&nbsp;&nbsp;&nbsp;&nbsp;
+    <strong>OI:</strong> &nbsp;${c.rx_oi_esf != null ? "" : "EMETROPE."}
+  </p>
+
+  <div class="av-block">
+    <div class="av-row">
+      <span><strong>AV OD S/C:</strong> ${avODsc || "—"}</span>
+      <span style="margin-left:80px"><strong>AV OD C/C:</strong> ${avODcc || "-"}</span>
     </div>
-    ${c.diagnostico || c.motivo_consulta ? `<div class="doc-section"><h3 class="doc-section-title">Diagnóstico</h3>
-      ${c.motivo_consulta ? `<div class="row"><span class="lbl">Motivo:</span>${c.motivo_consulta}</div>` : ""}
-      ${c.diagnostico ? `<div class="row"><span class="lbl">Diagnóstico:</span><strong>${c.diagnostico}</strong></div>` : ""}
-      ${c.plan_tratamiento ? `<div class="row"><span class="lbl">Plan:</span>${c.plan_tratamiento}</div>` : ""}
-    </div>` : ""}
-    ${conMedidas ? `<div class="doc-section"><h3 class="doc-section-title">Prescripción</h3>${recetaHtml}</div>` : ""}
-    ${c.proximo_control ? `<div class="doc-section"><h3 class="doc-section-title">Próximo control</h3><p style="font-size:11px">${c.proximo_control}</p></div>` : ""}
-    <div class="firma-row">
-      <div class="firma-box">
-        ${firma ? `<img src="${firma}" />` : ""}
-        <div class="line"></div>
-        <p>Optometrista / Responsable</p>
-      </div>
-      <div class="firma-box">
-        <div class="line" style="margin-top:44px"></div>
-        <p>Firma / Huella del Paciente</p>
-      </div>
+    <div class="av-row">
+      <span><strong>AV OI S/C:</strong> ${avOIsc || "—"}</span>
+      <span style="margin-left:80px"><strong>AV OI C/C:</strong> ${avOIcc || "-"}</span>
     </div>
   </div>
+
+  ${conMedidas ? `
+  <table class="rx">
+    <thead><tr>
+      <th style="text-align:left;padding-left:12px">RX</th>
+      <th>ESFERA</th><th>CILINDRO</th><th>EJE</th><th>ADD</th><th>DP</th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="eye">OD</td>${rxOD}</tr>
+      <tr><td class="eye" style="padding-top:14px;padding-bottom:14px"></td><td></td><td></td><td></td><td></td><td></td></tr>
+      <tr><td class="eye">OI</td>${rxOI}</tr>
+      <tr><td class="eye" style="padding-top:14px;padding-bottom:14px"></td><td></td><td></td><td></td><td></td><td></td></tr>
+    </tbody>
+  </table>` : ""}
+
+  ${observaciones ? `<div class="obs">
+    <div class="obs-title">Observaciones</div>
+    <div class="obs-text">${observaciones}</div>
+  </div>` : ""}
+
+  <div class="firma-section">
+    <div class="firma-box">
+      ${firma ? `<img src="${firma}" />` : `<div style="height:50px"></div>`}
+      <div class="firma-line">OPT. (A) &nbsp;…………………………………….</div>
+      <div class="firma-sub">${optNombre || "Optometrista"}</div>
+    </div>
+  </div>
+
   ${MARCA_FOOTER}
   <script>window.onload=()=>window.print()</script></body></html>`
 
-  const w = window.open("", "_blank", "width=700,height=800")
+  const w = window.open("", "_blank", "width=700,height=900")
   if (w) { w.document.write(html); w.document.close() }
 }
 
@@ -129,6 +191,7 @@ export default function ConsultaDetalle() {
   const { id } = useParams()
   const navigate = useNavigate()
   const rol = useAuthStore((s) => s.user?.role)
+  const currentUser = useAuthStore((s) => s.user)
 
   const { data: c, isLoading, isError } = useQuery({
     queryKey: ["consulta", id],
@@ -178,7 +241,7 @@ export default function ConsultaDetalle() {
             </Link>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <div className="flex items-center border rounded-md overflow-hidden text-xs">
             <button
               onClick={() => setConMedidas(true)}
@@ -189,15 +252,27 @@ export default function ConsultaDetalle() {
               className={`px-3 py-1.5 transition-colors ${!conMedidas ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             >Sin medidas</button>
           </div>
-          <Button variant="outline" size="sm" onClick={() => printCertificado(c, paciente, conMedidas, config?.firma_electronica || "", useBrandStore.getState().logo)}>
-            <Printer className="h-4 w-4 mr-1" /> Certificado
+          <Button variant="outline" size="sm" onClick={() => printCertificado(c, paciente, conMedidas, currentUser?.firma_url || config?.firma_electronica || "", currentUser?.full_name || "", useBrandStore.getState().logo)}>
+            <Printer className="h-4 w-4 mr-1" /> Imprimir certificado
+          </Button>
+          <Button variant="outline" size="sm"
+            title="Agendar cita de control para este paciente"
+            onClick={() => navigate("/turnos", { state: { fromConsulta: { paciente_id: c.paciente_id, motivo: "Control visual", fecha: c.proximo_control ?? "" } } })}>
+            <CalendarPlus className="h-4 w-4 mr-1" /> Agendar control
           </Button>
           {(rol === "admin" || rol === "optometrista") && (
-            <Button variant="outline" size="sm" asChild>
-              <Link to={`/pacientes/${c.paciente_id}/consultas/${c.id}/editar`}>
-                <Pencil className="h-4 w-4 mr-1" /> Editar
-              </Link>
-            </Button>
+            <>
+              <Button variant="outline" size="sm"
+                title="Duplicar esta consulta como nueva"
+                onClick={() => navigate(`/pacientes/${c.paciente_id}/consultas/nueva`, { state: { duplicarDe: c } })}>
+                <Copy className="h-4 w-4 mr-1" /> Duplicar
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/pacientes/${c.paciente_id}/consultas/${c.id}/editar`}>
+                  <Pencil className="h-4 w-4 mr-1" /> Editar
+                </Link>
+              </Button>
+            </>
           )}
         </div>
       </div>

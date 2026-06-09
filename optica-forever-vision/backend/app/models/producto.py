@@ -4,7 +4,9 @@ from decimal import Decimal
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+
 from app.core.db import Base
+from app.models.proveedor import Proveedor
 
 
 class Categoria(Base):
@@ -33,6 +35,9 @@ class Producto(Base):
     stock_minimo: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     unidad: Mapped[str] = mapped_column(String(30), nullable=False, default="unidad")
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    proveedor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("proveedores.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
     )
@@ -41,6 +46,7 @@ class Producto(Base):
     )
 
     categoria: Mapped["Categoria | None"] = relationship("Categoria", back_populates="productos")
+    proveedor: Mapped["Proveedor | None"] = relationship("Proveedor", foreign_keys=[proveedor_id], lazy="joined")
 
 
 class MovimientoInventario(Base):

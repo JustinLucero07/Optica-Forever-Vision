@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams, useLocation } from "react-router-dom"
 import { useForm, type UseFormRegister, type FieldPath } from "react-hook-form"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -98,9 +98,13 @@ function RxGrid({ prefix, register }: { prefix: string; register: UseFormRegiste
 export default function ConsultaForm() {
   const { pacienteId, consultaId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const qc = useQueryClient()
   const [seccion, setSeccion] = useState(0)
   const esNueva = !consultaId
+  const draftKey = `consulta_draft_${pacienteId}`
+  const [tieneBorrador, setTieneBorrador] = useState(() => esNueva && !!localStorage.getItem(draftKey))
+  const [ultimoGuardado, setUltimoGuardado] = useState<Date | null>(null)
 
   const { data: paciente } = useQuery({
     queryKey: ["paciente", pacienteId],
@@ -114,38 +118,71 @@ export default function ConsultaForm() {
     enabled: !!consultaId,
   })
 
-  const { register, handleSubmit, reset } = useForm<FormData>({
+  const { register, handleSubmit, reset, getValues } = useForm<FormData>({
     defaultValues: { fecha: new Date().toISOString().slice(0, 10) },
   })
 
-  useEffect(() => {
-    if (consulta) {
-      const recLC = consulta.recetas?.find((r: { tipo: string }) => r.tipo === "lente_convencional")
-      const recCL = consulta.recetas?.find((r: { tipo: string }) => r.tipo === "contactologia")
-      reset({
-        fecha: consulta.fecha,
-        motivo_consulta: consulta.motivo_consulta ?? "",
-        antecedentes: consulta.antecedentes ?? "",
-        avsc_od: consulta.avsc_od ?? "", avsc_oi: consulta.avsc_oi ?? "", avsc_ao: consulta.avsc_ao ?? "",
-        avcc_od: consulta.avcc_od ?? "", avcc_oi: consulta.avcc_oi ?? "", avcc_ao: consulta.avcc_ao ?? "",
-        rx_od_esf: consulta.rx_od_esf ?? "", rx_od_cil: consulta.rx_od_cil ?? "", rx_od_eje: consulta.rx_od_eje ?? "", rx_od_add: consulta.rx_od_add ?? "", rx_od_av: consulta.rx_od_av ?? "",
-        rx_oi_esf: consulta.rx_oi_esf ?? "", rx_oi_cil: consulta.rx_oi_cil ?? "", rx_oi_eje: consulta.rx_oi_eje ?? "", rx_oi_add: consulta.rx_oi_add ?? "", rx_oi_av: consulta.rx_oi_av ?? "",
-        pio_od: consulta.pio_od ?? "", pio_oi: consulta.pio_oi ?? "",
-        cover_test_vl: consulta.cover_test_vl ?? "", cover_test_vp: consulta.cover_test_vp ?? "", motilidad: consulta.motilidad ?? "", estereopsis: consulta.estereopsis ?? "",
-        seg_anterior_od: consulta.seg_anterior_od ?? "", seg_anterior_oi: consulta.seg_anterior_oi ?? "",
-        fondo_od: consulta.fondo_od ?? "", fondo_oi: consulta.fondo_oi ?? "",
-        diagnostico: consulta.diagnostico ?? "", plan_tratamiento: consulta.plan_tratamiento ?? "", observaciones: consulta.observaciones ?? "", proximo_control: consulta.proximo_control ?? "",
-        lc_od_esf: recLC?.lc_od_esf ?? "", lc_od_cil: recLC?.lc_od_cil ?? "", lc_od_eje: recLC?.lc_od_eje ?? "", lc_od_add: recLC?.lc_od_add ?? "", lc_od_dnp: recLC?.lc_od_dnp ?? "", lc_od_alt: recLC?.lc_od_alt ?? "",
-        lc_oi_esf: recLC?.lc_oi_esf ?? "", lc_oi_cil: recLC?.lc_oi_cil ?? "", lc_oi_eje: recLC?.lc_oi_eje ?? "", lc_oi_add: recLC?.lc_oi_add ?? "", lc_oi_dnp: recLC?.lc_oi_dnp ?? "", lc_oi_alt: recLC?.lc_oi_alt ?? "",
-        tipo_lente: recLC?.tipo_lente ?? "", tipo_armadura: recLC?.tipo_armadura ?? "", obs_lc: recLC?.observaciones ?? "",
-        cl_od_marca: recCL?.cl_od_marca ?? "", cl_od_bc: recCL?.cl_od_bc ?? "", cl_od_diam: recCL?.cl_od_diam ?? "", cl_od_esf: recCL?.cl_od_esf ?? "", cl_od_cil: recCL?.cl_od_cil ?? "", cl_od_eje: recCL?.cl_od_eje ?? "",
-        cl_oi_marca: recCL?.cl_oi_marca ?? "", cl_oi_bc: recCL?.cl_oi_bc ?? "", cl_oi_diam: recCL?.cl_oi_diam ?? "", cl_oi_esf: recCL?.cl_oi_esf ?? "", cl_oi_cil: recCL?.cl_oi_cil ?? "", cl_oi_eje: recCL?.cl_oi_eje ?? "",
-        obs_cl: recCL?.observaciones ?? "",
-        k_od_1: consulta.k_od_1 ?? "", k_od_2: consulta.k_od_2 ?? "", k_od_eje: consulta.k_od_eje ?? "",
-        k_oi_1: consulta.k_oi_1 ?? "", k_oi_2: consulta.k_oi_2 ?? "", k_oi_eje: consulta.k_oi_eje ?? "",
-      })
+  function buildValuesFromConsulta(c: any) {
+    const recLC = c.recetas?.find((r: { tipo: string }) => r.tipo === "lente_convencional")
+    const recCL = c.recetas?.find((r: { tipo: string }) => r.tipo === "contactologia")
+    return {
+      fecha: esNueva ? new Date().toISOString().slice(0, 10) : c.fecha,
+      motivo_consulta: c.motivo_consulta ?? "",
+      antecedentes: c.antecedentes ?? "",
+      avsc_od: c.avsc_od ?? "", avsc_oi: c.avsc_oi ?? "", avsc_ao: c.avsc_ao ?? "",
+      avcc_od: c.avcc_od ?? "", avcc_oi: c.avcc_oi ?? "", avcc_ao: c.avcc_ao ?? "",
+      rx_od_esf: c.rx_od_esf ?? "", rx_od_cil: c.rx_od_cil ?? "", rx_od_eje: c.rx_od_eje ?? "", rx_od_add: c.rx_od_add ?? "", rx_od_av: c.rx_od_av ?? "",
+      rx_oi_esf: c.rx_oi_esf ?? "", rx_oi_cil: c.rx_oi_cil ?? "", rx_oi_eje: c.rx_oi_eje ?? "", rx_oi_add: c.rx_oi_add ?? "", rx_oi_av: c.rx_oi_av ?? "",
+      pio_od: c.pio_od ?? "", pio_oi: c.pio_oi ?? "",
+      cover_test_vl: c.cover_test_vl ?? "", cover_test_vp: c.cover_test_vp ?? "", motilidad: c.motilidad ?? "", estereopsis: c.estereopsis ?? "",
+      seg_anterior_od: c.seg_anterior_od ?? "", seg_anterior_oi: c.seg_anterior_oi ?? "",
+      fondo_od: c.fondo_od ?? "", fondo_oi: c.fondo_oi ?? "",
+      diagnostico: c.diagnostico ?? "", plan_tratamiento: c.plan_tratamiento ?? "", observaciones: c.observaciones ?? "", proximo_control: c.proximo_control ?? "",
+      lc_od_esf: recLC?.lc_od_esf ?? "", lc_od_cil: recLC?.lc_od_cil ?? "", lc_od_eje: recLC?.lc_od_eje ?? "", lc_od_add: recLC?.lc_od_add ?? "", lc_od_dnp: recLC?.lc_od_dnp ?? "", lc_od_alt: recLC?.lc_od_alt ?? "",
+      lc_oi_esf: recLC?.lc_oi_esf ?? "", lc_oi_cil: recLC?.lc_oi_cil ?? "", lc_oi_eje: recLC?.lc_oi_eje ?? "", lc_oi_add: recLC?.lc_oi_add ?? "", lc_oi_dnp: recLC?.lc_oi_dnp ?? "", lc_oi_alt: recLC?.lc_oi_alt ?? "",
+      tipo_lente: recLC?.tipo_lente ?? "", tipo_armadura: recLC?.tipo_armadura ?? "", obs_lc: recLC?.observaciones ?? "",
+      cl_od_marca: recCL?.cl_od_marca ?? "", cl_od_bc: recCL?.cl_od_bc ?? "", cl_od_diam: recCL?.cl_od_diam ?? "", cl_od_esf: recCL?.cl_od_esf ?? "", cl_od_cil: recCL?.cl_od_cil ?? "", cl_od_eje: recCL?.cl_od_eje ?? "",
+      cl_oi_marca: recCL?.cl_oi_marca ?? "", cl_oi_bc: recCL?.cl_oi_bc ?? "", cl_oi_diam: recCL?.cl_oi_diam ?? "", cl_oi_esf: recCL?.cl_oi_esf ?? "", cl_oi_cil: recCL?.cl_oi_cil ?? "", cl_oi_eje: recCL?.cl_oi_eje ?? "",
+      obs_cl: recCL?.observaciones ?? "",
+      k_od_1: c.k_od_1 ?? "", k_od_2: c.k_od_2 ?? "", k_od_eje: c.k_od_eje ?? "",
+      k_oi_1: c.k_oi_1 ?? "", k_oi_2: c.k_oi_2 ?? "", k_oi_eje: c.k_oi_eje ?? "",
     }
-  }, [consulta, reset])
+  }
+
+  useEffect(() => {
+    const duplicarDe = (location.state as any)?.duplicarDe
+    if (duplicarDe && esNueva) {
+      reset(buildValuesFromConsulta(duplicarDe))
+      toast.info("Consulta duplicada — revisa los datos antes de guardar")
+    } else if (consulta) {
+      reset(buildValuesFromConsulta(consulta))
+    }
+  }, [consulta, reset, esNueva])
+
+  // Auto-guardado de borrador cada 30 segundos (solo en nueva consulta)
+  useEffect(() => {
+    if (!esNueva) return
+    const interval = setInterval(() => {
+      const vals = getValues()
+      if (Object.values(vals).some(v => v !== "" && v != null)) {
+        localStorage.setItem(draftKey, JSON.stringify(vals))
+        setUltimoGuardado(new Date())
+      }
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [esNueva, draftKey, getValues])
+
+  function restaurarBorrador() {
+    const raw = localStorage.getItem(draftKey)
+    if (!raw) return
+    try { reset(JSON.parse(raw)); setTieneBorrador(false); toast.success("Borrador restaurado") }
+    catch { toast.error("Error al restaurar borrador") }
+  }
+
+  function descartarBorrador() {
+    localStorage.removeItem(draftKey)
+    setTieneBorrador(false)
+  }
 
   const guardarMut = useMutation({
     mutationFn: (d: FormData) => {
@@ -156,6 +193,7 @@ export default function ConsultaForm() {
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["consultas", pacienteId] })
+      if (esNueva) localStorage.removeItem(draftKey)
       toast.success(esNueva ? "Consulta creada" : "Consulta actualizada")
       navigate(`/consultas/${res.data.id}`)
     },
@@ -166,6 +204,15 @@ export default function ConsultaForm() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Banner borrador guardado */}
+      {tieneBorrador && esNueva && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-3 text-sm text-amber-800">
+          <span>Hay un borrador guardado de una consulta anterior para este paciente.</span>
+          <button className="underline font-medium" onClick={restaurarBorrador}>Restaurar</button>
+          <button className="text-amber-600 hover:text-amber-900" onClick={descartarBorrador}>Descartar</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b bg-background sticky top-0 z-10">
         <div className="flex items-center gap-3">
@@ -177,10 +224,17 @@ export default function ConsultaForm() {
             <p className="font-semibold">{esNueva ? "Nueva consulta" : `Editar ${consulta?.numero}`}</p>
           </div>
         </div>
-        <Button onClick={handleSubmit((d) => guardarMut.mutate(d))} disabled={guardarMut.isPending}>
-          {guardarMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-          Guardar
-        </Button>
+        <div className="flex items-center gap-3">
+          {esNueva && ultimoGuardado && (
+            <span className="text-xs text-muted-foreground">
+              Borrador guardado {ultimoGuardado.toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          <Button onClick={handleSubmit((d) => guardarMut.mutate(d))} disabled={guardarMut.isPending}>
+            {guardarMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+            Guardar
+          </Button>
+        </div>
       </div>
 
       {/* Tab nav */}

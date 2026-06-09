@@ -31,14 +31,6 @@ const tipoIcon: Record<string, React.ElementType> = {
   producto: Box,
 }
 
-const tipoLabel: Record<string, string> = {
-  paciente: "Paciente",
-  venta: "Venta",
-  orden: "Orden Lab",
-  credito: "Crédito",
-  producto: "Producto",
-}
-
 const tipoBg: Record<string, string> = {
   paciente: "bg-blue-100 text-blue-700",
   venta: "bg-green-100 text-green-700",
@@ -78,15 +70,15 @@ export default function GlobalSearch() {
     staleTime: 10_000,
   })
 
-  const todos: Resultado[] = data
-    ? [
-        ...data.pacientes,
-        ...data.ventas,
-        ...data.ordenes,
-        ...data.creditos,
-        ...data.productos,
-      ]
-    : []
+  const grupos: { key: keyof BuscarResponse; label: string }[] = [
+    { key: "pacientes", label: "Pacientes" },
+    { key: "ventas",    label: "Ventas" },
+    { key: "ordenes",   label: "Órdenes Lab" },
+    { key: "creditos",  label: "Créditos" },
+    { key: "productos", label: "Productos" },
+  ]
+
+  const totalResultados = data ? grupos.reduce((s, g) => s + (data[g.key] as Resultado[]).length, 0) : 0
 
   function handleSelect(r: Resultado) {
     navigate(r.url)
@@ -98,10 +90,7 @@ export default function GlobalSearch() {
       className="fixed inset-0 z-[9999] flex items-start justify-center pt-[10vh] px-4"
       onClick={() => setOpen(false)}
     >
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-
-      {/* Modal box */}
       <div
         className="relative z-10 w-full max-w-lg bg-card rounded-xl shadow-2xl border border-border overflow-hidden"
         onClick={e => e.stopPropagation()}
@@ -128,49 +117,56 @@ export default function GlobalSearch() {
         </div>
 
         {/* Results */}
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[65vh] overflow-y-auto">
           {q.length < 2 && (
             <div className="px-4 py-10 text-center text-sm text-muted-foreground">
               Escribe al menos 2 caracteres para buscar
             </div>
           )}
-          {q.length >= 2 && !isFetching && todos.length === 0 && (
+          {q.length >= 2 && !isFetching && totalResultados === 0 && (
             <div className="px-4 py-10 text-center text-sm text-muted-foreground">
               Sin resultados para "<strong className="text-foreground">{q}</strong>"
             </div>
           )}
-          {todos.length > 0 && (
-            <ul className="py-2">
-              {todos.map((r, i) => {
-                const Icon = tipoIcon[r.tipo] ?? Search
-                return (
-                  <li key={i}>
-                    <button
-                      onClick={() => handleSelect(r)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted transition-colors text-left"
-                    >
-                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-md flex-shrink-0 ${tipoBg[r.tipo] ?? "bg-muted text-muted-foreground"}`}>
-                        <Icon className="h-3.5 w-3.5" />
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate text-foreground">{r.label}</p>
-                        {r.sub && <p className="text-xs text-muted-foreground truncate">{r.sub}</p>}
-                      </div>
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${tipoBg[r.tipo] ?? "bg-muted text-muted-foreground"}`}>
-                        {tipoLabel[r.tipo] ?? r.tipo}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+          {totalResultados > 0 && grupos.map(({ key, label }) => {
+            const items = (data?.[key] ?? []) as Resultado[]
+            if (items.length === 0) return null
+            return (
+              <div key={key}>
+                <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  {label} <span className="opacity-50">({items.length})</span>
+                </div>
+                <ul>
+                  {items.map((r, i) => {
+                    const Icon = tipoIcon[r.tipo] ?? Search
+                    return (
+                      <li key={i}>
+                        <button
+                          onClick={() => handleSelect(r)}
+                          className="w-full flex items-center gap-3 px-4 py-2 hover:bg-muted transition-colors text-left"
+                        >
+                          <span className={`inline-flex items-center justify-center w-7 h-7 rounded-md flex-shrink-0 ${tipoBg[r.tipo] ?? "bg-muted text-muted-foreground"}`}>
+                            <Icon className="h-3.5 w-3.5" />
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate text-foreground">{r.label}</p>
+                            {r.sub && <p className="text-xs text-muted-foreground truncate">{r.sub}</p>}
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )
+          })}
         </div>
 
         {/* Footer */}
         <div className="border-t border-border px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground bg-muted/30">
           <span>Esc cerrar</span>
           <span>↵ seleccionar</span>
+          {totalResultados > 0 && <span className="ml-auto">{totalResultados} resultado{totalResultados !== 1 ? "s" : ""}</span>}
         </div>
       </div>
     </div>,

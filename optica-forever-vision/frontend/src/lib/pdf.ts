@@ -22,13 +22,26 @@ const PIN_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" str
 const PHONE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.23h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l.81-.81a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 17z"/></svg>`
 
 export const MARCA_FOOTER = `
-<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:#f0f9ff;border-top:2px solid #0891b2;margin-top:20px;font-size:10px;color:#475569;font-family:Arial,sans-serif">
-  <div style="display:flex;align-items:center;gap:20px">
-    <span style="display:inline-flex;align-items:center;gap:3px">${PIN_SVG} Av. 24 de Mayo y Puyo, Cuenca</span>
-    <span style="display:inline-flex;align-items:center;gap:3px">${PHONE_SVG} 097 100 495</span>
-    <span style="display:inline-flex;align-items:center;gap:3px">${PHONE_SVG} 098 674 908</span>
+<div style="display:flex;align-items:stretch;justify-content:space-between;background:#f0f9ff;border-top:2px solid #0891b2;margin-top:20px;font-family:Arial,sans-serif">
+  <div style="display:flex;align-items:center;gap:6px;padding:8px 16px;flex:1">
+    <div style="margin-right:12px">
+      <div style="display:inline-flex;align-items:flex-start;gap:4px;font-size:10px;color:#475569;line-height:1.5">
+        ${PIN_SVG}
+        <span>Av. 24 de Mayo y Puyo<br>Diagonal a la salida de Wayra Plaza<br>Sector Colegio Garaicoa — Cuenca</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#475569">${PHONE_SVG} 0979 100 495</span>
+      <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#475569">${PHONE_SVG} 0998 674 908</span>
+    </div>
   </div>
-  ${EYE_SVG.replace('width="46" height="46"', 'width="28" height="28"')}
+  <div style="display:flex;align-items:center;padding:8px 16px;background:#e0f2fe;border-left:1px solid #bae6fd">
+    ${EYE_SVG.replace('width="46" height="46"', 'width="32" height="32"')}
+    <div style="margin-left:8px;line-height:1.2">
+      <div style="font-family:Georgia,serif;font-style:italic;font-size:9px;color:#64748b;letter-spacing:1px">Óptica</div>
+      <div style="font-family:Arial,sans-serif;font-weight:800;font-size:10px;color:#0891b2;letter-spacing:2px">FOREVER VISION</div>
+    </div>
+  </div>
 </div>`
 
 export const PDF_BASE_CSS = `

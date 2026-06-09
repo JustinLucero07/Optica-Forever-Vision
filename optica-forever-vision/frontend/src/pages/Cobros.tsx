@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm, type UseFormRegisterReturn } from "react-hook-form"
 import { toast } from "sonner"
-import { type LucideIcon, Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2 } from "lucide-react"
+import { type LucideIcon, Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2, ArrowLeftRight, AlertTriangle, BarChart2, Building2, Pencil } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
@@ -35,6 +35,9 @@ type CobroForm = { cuenta_bancaria_id: string; fecha: string; concepto: string; 
 type EgresoForm = { cuenta_bancaria_id: string; fecha: string; categoria: string; concepto: string; monto: string; metodo_pago: string; referencia: string; notas: string }
 type CxPForm = { proveedor: string; concepto: string; monto_total: string; fecha_emision: string; fecha_vencimiento: string; referencia: string; notas: string }
 type PagoForm = { monto: string; cuenta_bancaria_id: string; fecha: string; metodo_pago: string; referencia: string }
+type TransferenciaForm = { fecha: string; cuenta_origen_id: string; cuenta_destino_id: string; monto: string; concepto: string; notas: string }
+type NuevaCuentaForm = { nombre: string; tipo: string; saldo_inicial: string }
+interface Transferencia { id: number; numero: string; fecha: string; cuenta_origen_id: number; cuenta_destino_id: number; monto: number; concepto: string | null; created_at: string }
 
 function fmt(n: number) { return `$${Number(n).toFixed(2)}` }
 
@@ -59,6 +62,9 @@ export default function Cobros() {
   const [dialogNuevoProd, setDialogNuevoProd] = useState<CxPItem | null>(null)
   const [nuevoProdNombre, setNuevoProdNombre] = useState("")
   const [nuevoProdCodigo, setNuevoProdCodigo] = useState("")
+  const [dialogTransferencia, setDialogTransferencia] = useState(false)
+  const [dialogNuevaCuenta, setDialogNuevaCuenta] = useState(false)
+  const [editandoCuenta, setEditandoCuenta] = useState<Cuenta | null>(null)
 
   // venta selection state for cobro dialog
   const [ventaSel, setVentaSel] = useState<VentaPendiente | null>(null)
@@ -118,10 +124,18 @@ export default function Cobros() {
   const abonadoVenta = cobrosVenta.reduce((s, c) => s + c.monto, 0)
   const saldoVenta = ventaSel ? Math.max(0, ventaSel.total - abonadoVenta) : 0
 
+  const { data: transferencias = [] } = useQuery<Transferencia[]>({
+    queryKey: ["transferencias"],
+    queryFn: () => api.get("/transferencias").then(r => r.data),
+    enabled: tab === "cuentas",
+  })
+
   const { register: rC, handleSubmit: hsC, reset: resetC, setValue: svC } = useForm<CobroForm>()
-  const { register: rE, handleSubmit: hsE, reset: resetE } = useForm<EgresoForm>()
+  const { register: rE, handleSubmit: hsE, reset: resetE, watch: watchE } = useForm<EgresoForm>()
   const { register: rCxP, handleSubmit: hsCxP, reset: resetCxP } = useForm<CxPForm>()
-  const { register: rPago, handleSubmit: hsPago, reset: resetPago } = useForm<PagoForm>()
+  const { register: rPago, handleSubmit: hsPago, reset: resetPago, watch: watchPago } = useForm<PagoForm>()
+  const { register: rTrf, handleSubmit: hsTrf, reset: resetTrf, watch: watchTrf } = useForm<TransferenciaForm>()
+  const { register: rNC, handleSubmit: hsNC, reset: resetNC } = useForm<NuevaCuentaForm>()
 
   // auto-fill monto when venta selection + cobros load
   useEffect(() => {
@@ -184,6 +198,49 @@ export default function Cobros() {
     onError: (e) => toast.error(errMsg(e, "No se puede eliminar")),
   })
 
+  const transferenciaMut = useMutation({
+    mutationFn: (d: TransferenciaForm) => api.post("/transferencias", {
+      fecha: d.fecha, cuenta_origen_id: Number(d.cuenta_origen_id),
+      cuenta_destino_id: Number(d.cuenta_destino_id), monto: Number(d.monto),
+      concepto: d.concepto || null, notas: d.notas || null,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] })
+      qc.invalidateQueries({ queryKey: ["transferencias"] })
+      setDialogTransferencia(false)
+      toast.success("Transferencia registrada")
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+  })
+
+  const nuevaCuentaMut = useMutation({
+    mutationFn: (d: NuevaCuentaForm) => {
+      const payload = { nombre: d.nombre, tipo: d.tipo, saldo_inicial: Number(d.saldo_inicial) || 0 }
+      return editandoCuenta
+        ? api.put(`/cuentas-bancarias/${editandoCuenta.id}`, payload)
+        : api.post("/cuentas-bancarias", payload)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] })
+      setDialogNuevaCuenta(false)
+      setEditandoCuenta(null)
+      toast.success(editandoCuenta ? "Cuenta actualizada" : "Cuenta creada")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al guardar cuenta")),
+  })
+
+  function abrirNuevaCuenta() {
+    setEditandoCuenta(null)
+    resetNC({ nombre: "", tipo: "banco", saldo_inicial: "0" })
+    setDialogNuevaCuenta(true)
+  }
+
+  function abrirEditarCuenta(c: Cuenta) {
+    setEditandoCuenta(c)
+    resetNC({ nombre: c.nombre, tipo: c.tipo, saldo_inicial: "" })
+    setDialogNuevaCuenta(true)
+  }
+
   const hoy = new Date().toISOString().slice(0, 10)
   const totalCobros = cobros.reduce((s, c) => s + c.monto, 0)
   const totalEgresos = egresos.reduce((s, e) => s + e.monto, 0)
@@ -228,9 +285,21 @@ export default function Cobros() {
 
   const SelectCuenta = ({ reg }: { reg: UseFormRegisterReturn }) => (
     <select {...reg} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+      {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
     </select>
   )
+
+  function SaldoAviso({ cuentaId, monto }: { cuentaId: string; monto: string }) {
+    const cuenta = cuentas.find(c => c.id === Number(cuentaId))
+    const m = parseFloat(monto || "0")
+    if (!cuenta || !m || m <= 0 || cuenta.saldo_actual >= m) return null
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        <span>Saldo insuficiente — <strong>{cuenta.nombre}</strong> tiene <strong>{fmt(cuenta.saldo_actual)}</strong> disponible</span>
+      </div>
+    )
+  }
 
   const SelectMetodo = ({ reg }: { reg: UseFormRegisterReturn }) => (
     <select {...reg} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -466,13 +535,31 @@ export default function Cobros() {
       {/* Tab: Saldos */}
       {tab === "cuentas" && (
         <>
+          <div className="flex justify-end gap-2 mb-1">
+            {rol === "admin" && (
+              <Button variant="outline" size="sm" onClick={abrirNuevaCuenta}>
+                <Building2 className="h-4 w-4 mr-2" /> Nueva cuenta
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => { resetTrf({ fecha: hoy, monto: "", concepto: "", notas: "" }); setDialogTransferencia(true) }}>
+              <ArrowLeftRight className="h-4 w-4 mr-2" /> Cruce de cuentas
+            </Button>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {cuentas.map(c => (
               <Card key={c.id} className={!c.activa ? "opacity-60" : ""}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm flex items-center justify-between">
-                    {c.nombre}
-                    <Badge variant="outline" className="font-normal text-xs">{c.tipo}</Badge>
+                    <span className="font-semibold">{c.nombre}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="font-normal text-xs">{c.tipo}</Badge>
+                      {rol === "admin" && (
+                        <button onClick={() => abrirEditarCuenta(c)}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -483,6 +570,40 @@ export default function Cobros() {
               </Card>
             ))}
           </div>
+
+          {/* Historial de transferencias */}
+          {transferencias.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ArrowLeftRight className="h-4 w-4 text-muted-foreground" /> Cruces de cuentas
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="divide-y">
+                  {transferencias.slice(0, 20).map(t => {
+                    const origen = cuentas.find(c => c.id === t.cuenta_origen_id)
+                    const destino = cuentas.find(c => c.id === t.cuenta_destino_id)
+                    return (
+                      <div key={t.id} className="flex items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-medium text-muted-foreground shrink-0">{t.fecha}</span>
+                          <span className="text-sm truncate">
+                            <span className="font-medium">{origen?.nombre ?? `#${t.cuenta_origen_id}`}</span>
+                            <ArrowLeftRight className="h-3 w-3 inline mx-1.5 text-muted-foreground" />
+                            <span className="font-medium">{destino?.nombre ?? `#${t.cuenta_destino_id}`}</span>
+                          </span>
+                          {t.concepto && <span className="text-xs text-muted-foreground truncate hidden md:block">— {t.concepto}</span>}
+                        </div>
+                        <span className="font-bold text-sm shrink-0 ml-3">{fmt(t.monto)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <ResumenDiario cobros={cobros} egresos={egresos} />
         </>
       )}
@@ -639,6 +760,7 @@ export default function Cobros() {
                 <SelectCuenta reg={rE("cuenta_bancaria_id", { required: true })} />
               </div>
             </div>
+            <SaldoAviso cuentaId={watchE("cuenta_bancaria_id")} monto={watchE("monto")} />
             <div className="space-y-1">
               <Label>Referencia</Label>
               <Input placeholder="Comprobante, factura…" {...rE("referencia")} />
@@ -728,6 +850,7 @@ export default function Cobros() {
                 <SelectCuenta reg={rPago("cuenta_bancaria_id", { required: true })} />
               </div>
             </div>
+            <SaldoAviso cuentaId={watchPago("cuenta_bancaria_id")} monto={watchPago("monto")} />
             <div className="space-y-1">
               <Label>Referencia</Label>
               <Input placeholder="Nro. transferencia, cheque…" {...rPago("referencia")} />
@@ -791,6 +914,92 @@ export default function Cobros() {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {/* Dialog Cruce de cuentas */}
+      <Dialog open={dialogTransferencia} onClose={() => setDialogTransferencia(false)} className="max-w-md">
+        <DialogHeader onClose={() => setDialogTransferencia(false)}>Cruce de cuentas</DialogHeader>
+        <form onSubmit={hsTrf(d => transferenciaMut.mutate(d))}>
+          <DialogBody className="space-y-4">
+            <div className="space-y-1">
+              <Label>Fecha *</Label>
+              <Input type="date" {...rTrf("fecha", { required: true })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Cuenta origen (de donde sale) *</Label>
+              <select {...rTrf("cuenta_origen_id", { required: true })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">— seleccionar —</option>
+                {cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Cuenta destino (a donde entra) *</Label>
+              <select {...rTrf("cuenta_destino_id", { required: true })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">— seleccionar —</option>
+                {cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Monto ($) *</Label>
+              <Input type="number" step="0.01" min="0.01" {...rTrf("monto", { required: true })} />
+            </div>
+            <SaldoAviso cuentaId={watchTrf("cuenta_origen_id")} monto={watchTrf("monto")} />
+            <div className="space-y-1">
+              <Label>Concepto</Label>
+              <Input placeholder="Ej: Traslado para cubrir gastos…" {...rTrf("concepto")} />
+            </div>
+            <div className="space-y-1">
+              <Label>Notas</Label>
+              <Input {...rTrf("notas")} />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogTransferencia(false)}>Cancelar</Button>
+            <Button type="submit" disabled={transferenciaMut.isPending}>
+              {transferenciaMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Registrar cruce
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      {/* Dialog Nueva / Editar cuenta bancaria */}
+      <Dialog open={dialogNuevaCuenta} onClose={() => { setDialogNuevaCuenta(false); setEditandoCuenta(null) }} className="max-w-sm">
+        <DialogHeader onClose={() => { setDialogNuevaCuenta(false); setEditandoCuenta(null) }}>
+          {editandoCuenta ? `Editar — ${editandoCuenta.nombre}` : "Nueva cuenta bancaria"}
+        </DialogHeader>
+        <form onSubmit={hsNC(d => nuevaCuentaMut.mutate(d))}>
+          <DialogBody className="space-y-4">
+            <div className="space-y-1">
+              <Label>Nombre *</Label>
+              <Input placeholder="Ej: Banco Pichincha, Efectivo caja…" {...rNC("nombre", { required: "Requerido" })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Tipo *</Label>
+              <select {...rNC("tipo")} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="banco">Banco</option>
+                <option value="efectivo">Efectivo</option>
+                <option value="electronico">Billetera electrónica</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+            {!editandoCuenta && (
+              <div className="space-y-1">
+                <Label>Saldo inicial ($)</Label>
+                <Input type="number" step="0.01" min="0" {...rNC("saldo_inicial")} />
+              </div>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => { setDialogNuevaCuenta(false); setEditandoCuenta(null) }}>Cancelar</Button>
+            <Button type="submit" disabled={nuevaCuentaMut.isPending}>
+              {nuevaCuentaMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {editandoCuenta ? "Guardar" : "Crear cuenta"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
     </div>
   )
 }
@@ -807,7 +1016,7 @@ function ResumenDiario({ cobros, egresos }: { cobros: Cobro[]; egresos: Egreso[]
     <Card className="mt-4">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          📊 Resumen del día — {hoy}
+          <BarChart2 className="h-4 w-4 text-muted-foreground" /> Resumen del día — {hoy}
         </CardTitle>
       </CardHeader>
       <CardContent>

@@ -3,6 +3,12 @@ from datetime import date, datetime
 from pydantic import BaseModel
 
 
+class CuentaBancariaCreate(BaseModel):
+    nombre: str
+    tipo: str = "banco"
+    saldo_inicial: float = 0
+
+
 class CuentaBancariaOut(BaseModel):
     id: int
     nombre: str
@@ -103,4 +109,26 @@ class CxPOut(BaseModel):
     def monto_pendiente(self) -> float:
         return round(self.monto_total - self.monto_pagado, 2)
 
+    model_config = {"from_attributes": True}
+
+
+class TransferenciaCreate(BaseModel):
+    fecha: date
+    cuenta_origen_id: int
+    cuenta_destino_id: int
+    monto: float
+    concepto: str | None = None
+    notas: str | None = None
+
+
+class TransferenciaOut(BaseModel):
+    id: int
+    numero: str
+    fecha: date
+    cuenta_origen_id: int
+    cuenta_destino_id: int
+    monto: float
+    concepto: str | None
+    notas: str | None
+    created_at: datetime
     model_config = {"from_attributes": True}

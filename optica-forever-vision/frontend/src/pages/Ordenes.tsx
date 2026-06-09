@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom"
 import { Paginador } from "@/components/ui/Paginador"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Plus, Loader2, Printer, ChevronDown, MessageCircle, Send, Trash2, PlusCircle, Tag } from "lucide-react"
+import { Plus, Loader2, Printer, ChevronDown, MessageCircle, Send, Trash2, PlusCircle, Tag, LayoutGrid, List } from "lucide-react"
 import { enviarOrdenLista } from "@/lib/whatsapp"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -509,6 +509,7 @@ export default function Ordenes() {
   const location = useLocation()
   const [filtroEstado, setFiltroEstado] = useState("")
   const [filtroPaciente, setFiltroPaciente] = useState("")
+  const [vistaKanban, setVistaKanban] = useState(false)
   const [page, setPage] = useState(1)
   const [PER_PAGE, setPER_PAGE] = useState(20)
   const [openForm, setOpenForm] = useState(false)
@@ -769,7 +770,7 @@ export default function Ordenes() {
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-1" /> Nueva orden</Button>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap items-center">
         <Input
           placeholder="Buscar paciente..."
           className="w-56"
@@ -784,11 +785,60 @@ export default function Ordenes() {
           <option value="">Todos los estados</option>
           {ESTADOS_ORDEN.map(s => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
         </select>
+        <div className="ml-auto flex items-center gap-1 border rounded-md overflow-hidden">
+          <button onClick={() => setVistaKanban(false)} title="Vista lista"
+            className={`p-2 transition-colors ${!vistaKanban ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+            <List className="h-4 w-4" />
+          </button>
+          <button onClick={() => setVistaKanban(true)} title="Vista Kanban"
+            className={`p-2 transition-colors ${vistaKanban ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+            <LayoutGrid className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
         <div className="flex justify-center py-10">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : vistaKanban ? (
+        /* ── Vista Kanban ── */
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {ESTADOS_ORDEN.map(estado => {
+            const cols = ordenesFiltradas.filter(o => o.estado === estado)
+            return (
+              <div key={estado} className="flex-shrink-0 w-64">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{estado.replace("_", " ")}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${ESTADO_BADGE_CLASS[estado] ?? "bg-muted text-muted-foreground"}`}>{cols.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {cols.length === 0 && (
+                    <div className="border border-dashed rounded-lg py-6 text-center text-xs text-muted-foreground">Vacío</div>
+                  )}
+                  {cols.map(o => (
+                    <div key={o.id} className="bg-card border rounded-xl p-3 shadow-sm space-y-1.5 hover:shadow-md transition-shadow">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-bold">{o.numero}</span>
+                        <EstadoPill estado={o.estado} />
+                      </div>
+                      <p className="text-xs font-medium text-foreground truncate">{pacienteNombre(o.paciente_id)}</p>
+                      <p className="text-xs text-muted-foreground truncate">{o.tipo}</p>
+                      <p className="text-xs text-muted-foreground">{o.lab_proveedor}</p>
+                      <div className="flex gap-1 pt-1">
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openEdit(o)}>Editar</Button>
+                        {o.lab_telefono && (
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-blue-600" onClick={() => enviarAlLab(o, pacienteNombre(o.paciente_id))}>
+                            <Send className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
       ) : (
         <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
@@ -880,7 +930,8 @@ export default function Ordenes() {
           </table>
           <Paginador page={page} total={ordenesFiltradas.length} perPage={PER_PAGE} onChange={setPage} onPerPageChange={n => { setPER_PAGE(n); setPage(1) }} />
         </div>
-      )}
+      )
+      }
 
       {/* FORM DIALOG */}
       <Dialog open={openForm} onClose={() => setOpenForm(false)} className="max-w-4xl">

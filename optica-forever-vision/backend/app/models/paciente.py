@@ -1,7 +1,7 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Index, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 
@@ -23,6 +23,9 @@ class Paciente(Base):
     ocupacion: Mapped[str | None] = mapped_column(String(100), nullable=True)
     origen: Mapped[str | None] = mapped_column(String(100), nullable=True)
     referido_por: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    referido_a_usuario_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     foto: Mapped[str | None] = mapped_column(Text, nullable=True)
     armazon_tipo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     armazon_notas: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -32,6 +35,14 @@ class Paciente(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+    referido_a: Mapped["app.models.user.User | None"] = relationship(  # type: ignore[name-defined]
+        "User", foreign_keys=[referido_a_usuario_id], lazy="joined"
+    )
+
+    @property
+    def referido_a_nombre(self) -> str | None:
+        return self.referido_a.full_name if self.referido_a else None
 
     __table_args__ = (
         Index("ix_pacientes_cedula", "cedula"),

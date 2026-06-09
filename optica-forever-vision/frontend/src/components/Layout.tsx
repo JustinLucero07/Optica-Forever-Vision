@@ -51,6 +51,7 @@ const NAV = [
 ]
 
 const NAV_ADMIN = [
+  { to: "/sueldos", label: "Sueldos", icon: Banknote },
   { to: "/proveedores", label: "Proveedores", icon: Truck },
   { to: "/usuarios", label: "Usuarios", icon: UserCog },
   { to: "/configuracion", label: "Configuración", icon: Settings },

@@ -24,6 +24,7 @@ import SRIImport from "@/pages/SRIImport"
 import Proveedores from "@/pages/Proveedores"
 import Presupuestos from "@/pages/Presupuestos"
 import CajaDiariaPage from "@/pages/CajaDiaria"
+import Sueldos from "@/pages/Sueldos"
 import { useAuthStore } from "@/store/auth"
 
 function RequireAuth() {
@@ -83,6 +84,7 @@ export const router = createBrowserRouter([
           { path: "configuracion", element: <Configuracion /> },
           { path: "sri-import", element: <SRIImport /> },
           { path: "proveedores", element: <Proveedores /> },
+          { path: "sueldos", element: <Sueldos /> },
 
           { path: "*", element: <Navigate to="/" replace /> },
         ],

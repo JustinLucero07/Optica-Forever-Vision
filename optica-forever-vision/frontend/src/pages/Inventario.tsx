@@ -13,14 +13,16 @@ import { useAuthStore } from "@/store/auth"
 import { Paginador } from "@/components/ui/Paginador"
 
 interface Categoria { id: number; nombre: string; descripcion?: string | null }
+interface Proveedor { id: number; nombre: string }
 interface Producto {
   id: number; codigo: string | null; nombre: string; descripcion: string | null
-  categoria: Categoria | null; precio_costo: number; precio_venta: number
+  categoria: Categoria | null; proveedor: Proveedor | null; proveedor_id: number | null
+  precio_costo: number; precio_venta: number
   stock_actual: number; stock_minimo: number; unidad: string; activo: boolean
 }
 
 type ProdForm = {
-  codigo: string; nombre: string; descripcion: string; categoria_id: string
+  codigo: string; nombre: string; descripcion: string; categoria_id: string; proveedor_id: string
   precio_costo: string; precio_venta: string; stock_actual: string; stock_minimo: string; unidad: string
 }
 
@@ -44,6 +46,11 @@ export default function Inventario() {
   const { data: categorias = [] } = useQuery<Categoria[]>({
     queryKey: ["categorias"],
     queryFn: () => api.get("/categorias").then(r => r.data),
+  })
+
+  const { data: proveedores = [] } = useQuery<Proveedor[]>({
+    queryKey: ["proveedores-activos"],
+    queryFn: () => api.get("/proveedores", { params: { activo: true } }).then(r => r.data),
   })
 
   const { data: productos = [], isLoading } = useQuery<Producto[]>({
@@ -102,6 +109,7 @@ export default function Inventario() {
     return {
       codigo: d.codigo || null, nombre: d.nombre, descripcion: d.descripcion || null,
       categoria_id: d.categoria_id ? Number(d.categoria_id) : null,
+      proveedor_id: d.proveedor_id ? Number(d.proveedor_id) : null,
       precio_costo: Number(d.precio_costo), precio_venta: Number(d.precio_venta),
       stock_actual: Number(d.stock_actual), stock_minimo: Number(d.stock_minimo), unidad: d.unidad,
     }
@@ -109,7 +117,7 @@ export default function Inventario() {
 
   function abrirNuevo() {
     setEditando(null)
-    resetProd({ codigo: "", nombre: "", descripcion: "", categoria_id: "", precio_costo: "0", precio_venta: "0", stock_actual: "0", stock_minimo: "0", unidad: "unidad" })
+    resetProd({ codigo: "", nombre: "", descripcion: "", categoria_id: "", proveedor_id: "", precio_costo: "0", precio_venta: "0", stock_actual: "0", stock_minimo: "0", unidad: "unidad" })
     setDialogProd(true)
   }
 
@@ -117,7 +125,9 @@ export default function Inventario() {
     setEditando(p)
     resetProd({
       codigo: p.codigo ?? "", nombre: p.nombre, descripcion: p.descripcion ?? "",
-      categoria_id: p.categoria?.id?.toString() ?? "", precio_costo: String(p.precio_costo),
+      categoria_id: p.categoria?.id?.toString() ?? "",
+      proveedor_id: p.proveedor_id?.toString() ?? "",
+      precio_costo: String(p.precio_costo),
       precio_venta: String(p.precio_venta), stock_actual: String(p.stock_actual),
       stock_minimo: String(p.stock_minimo), unidad: p.unidad,
     })
@@ -179,6 +189,7 @@ export default function Inventario() {
               <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Código</th>
               <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Nombre</th>
               <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Categoría</th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Proveedor</th>
               <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">P. Costo</th>
               <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">P. Venta</th>
               <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Stock</th>
@@ -186,9 +197,9 @@ export default function Inventario() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {isLoading && <tr><td colSpan={7} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin inline" /></td></tr>}
+            {isLoading && <tr><td colSpan={8} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin inline" /></td></tr>}
             {!isLoading && productos.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-14 text-muted-foreground">
+              <tr><td colSpan={8} className="text-center py-14 text-muted-foreground">
                 <Package className="h-8 w-8 mx-auto mb-2 opacity-30" />
                 <p className="font-medium">No se encontraron productos</p>
               </td></tr>
@@ -203,6 +214,7 @@ export default function Inventario() {
                     <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{p.categoria.nombre}</span>
                   ) : <span className="text-muted-foreground">—</span>}
                 </td>
+                <td className="px-4 py-3 text-sm text-muted-foreground">{p.proveedor?.nombre ?? <span className="opacity-40">—</span>}</td>
                 <td className="px-4 py-3 text-right text-muted-foreground tabular-nums">${Number(p.precio_costo).toFixed(2)}</td>
                 <td className="px-4 py-3 text-right font-bold tabular-nums">${Number(p.precio_venta).toFixed(2)}</td>
                 <td className="px-4 py-3 text-right">
@@ -279,6 +291,13 @@ export default function Inventario() {
                 <option value="caja">Caja</option>
                 <option value="frasco">Frasco</option>
                 <option value="servicio">Servicio</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Proveedor</Label>
+              <select {...regProd("proveedor_id")} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">— sin proveedor —</option>
+                {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
             <div className="space-y-1 col-span-2">

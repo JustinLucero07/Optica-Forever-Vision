@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query"
 import {
   Download, Loader2, TrendingUp, DollarSign,
   Users, ClipboardList, AlertTriangle, Printer, MessageCircle,
+  ChevronLeft, ChevronRight,
 } from "lucide-react"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
-  AreaChart, Area,
+  AreaChart, Area, Line, ComposedChart,
 } from "recharts"
 
 import { api } from "@/lib/api"
@@ -71,29 +72,26 @@ function useChartTheme() {
   }
 }
 
-// ── Tooltip personalizado ──────────────────────────────────────────────────────
 function FvTooltip({ active, payload, label, isCurrency = true, suffix = "" }: any) {
   const t = useChartTheme()
   if (!active || !payload?.length) return null
   return (
-    <div
-      className="rounded-xl border shadow-xl px-3 py-2.5 text-sm min-w-[110px]"
-      style={{ background: t.tooltipBg, borderColor: t.tooltipBorder }}
-    >
+    <div className="rounded-xl border shadow-xl px-3 py-2.5 text-sm min-w-[120px]"
+      style={{ background: t.tooltipBg, borderColor: t.tooltipBorder }}>
       <p className="text-xs font-medium mb-1" style={{ color: t.tick }}>{label}</p>
       {payload.map((p: any, i: number) => (
-        <p key={i} className="font-bold" style={{ color: p.fill || p.color || "#7c3aed" }}>
-          {isCurrency ? fmtUSD(p.value) : `${p.value}${suffix}`}
-        </p>
+        <div key={i} className="flex items-center justify-between gap-3">
+          <span className="text-xs" style={{ color: p.color || p.fill }}>{p.name ?? ""}</span>
+          <span className="font-bold" style={{ color: p.color || p.fill }}>
+            {isCurrency ? fmtUSD(p.value) : `${p.value}${suffix}`}
+          </span>
+        </div>
       ))}
     </div>
   )
 }
 
-// ── Card envoltorio para gráficas ──────────────────────────────────────────────
-function ChartCard({ title, children, className = "" }: {
-  title: string; children: React.ReactNode; className?: string
-}) {
+function ChartCard({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={`glass rounded-2xl overflow-hidden p-5 anim-fade-up ${className}`}>
       <p className="text-sm font-semibold mb-4">{title}</p>
@@ -102,52 +100,39 @@ function ChartCard({ title, children, className = "" }: {
   )
 }
 
-// ── KPI mini con glass + count-up ─────────────────────────────────────────────
-function MiniKpi({ label, rawValue, formatter, sub, icon: Icon, color }: {
+function MiniKpi({ label, rawValue, formatter, sub, icon: Icon, color, trend }: {
   label: string; rawValue: number; formatter?: (n: number) => string
-  sub?: string; icon: React.ElementType; color: string
+  sub?: string; icon: React.ElementType; color: string; trend?: number | null
 }) {
   const animated = useCountUp(rawValue, 1000)
-  const display  = formatter ? formatter(animated) : Math.round(animated).toString()
+  const display = formatter ? formatter(animated) : Math.round(animated).toString()
   return (
     <div className="glass rounded-2xl overflow-hidden p-4 flex items-start gap-3 anim-fade-up hover:scale-[1.02] transition-transform duration-200">
       <div className={`p-2.5 rounded-xl shrink-0 shadow-lg ${color}`}>
         <Icon className="h-4 w-4 text-white" />
       </div>
-      <div className="min-w-0 relative z-10">
+      <div className="min-w-0 flex-1 relative z-10">
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className="text-xl font-black tabular-nums leading-tight">{display}</p>
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
+      {trend !== null && trend !== undefined && (
+        <div className={`text-xs font-bold shrink-0 px-1.5 py-0.5 rounded-full ${trend >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+          {trend >= 0 ? "+" : ""}{trend}%
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Tabs ───────────────────────────────────────────────────────────────────────
-type Tab = "dashboard" | "ventas" | "cobros" | "inventario" | "pacientes" | "inactivos"
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "dashboard", label: "Resumen" },
-  { id: "ventas", label: "Ventas" },
-  { id: "cobros", label: "Cobros" },
-  { id: "inventario", label: "Inventario" },
-  { id: "pacientes", label: "Pacientes" },
-  { id: "inactivos", label: "Inactivos" },
-]
-
-// ── Gráfica barra vertical ─────────────────────────────────────────────────────
-function VBarChart({ data, isCurrency = true }: {
-  data: { name: string; value: number }[]
-  isCurrency?: boolean
-}) {
+function VBarChart({ data, isCurrency = true }: { data: { name: string; value: number }[]; isCurrency?: boolean }) {
   const t = useChartTheme()
   if (!data.length) return <p className="text-sm text-muted-foreground text-center py-6">Sin datos</p>
-  const gradId = "vbarGrad"
   return (
     <ResponsiveContainer width="100%" height={200}>
       <BarChart data={data} margin={{ top: 8, right: 4, left: -20, bottom: 0 }}>
         <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="vbarGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={t.primary} stopOpacity={1} />
             <stop offset="100%" stopColor={t.primary} stopOpacity={0.65} />
           </linearGradient>
@@ -155,123 +140,112 @@ function VBarChart({ data, isCurrency = true }: {
         <CartesianGrid strokeDasharray="3 3" stroke={t.grid} vertical={false} />
         <XAxis dataKey="name" tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false}
-          tickFormatter={v => isCurrency
-            ? (v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`)
-            : String(v)} />
+          tickFormatter={v => isCurrency ? (v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`) : String(v)} />
         <Tooltip content={<FvTooltip isCurrency={isCurrency} />} cursor={{ fill: "hsl(var(--muted)/0.4)" }} />
-        <Bar
-          dataKey="value"
-          fill={`url(#${gradId})`}
-          radius={[6, 6, 0, 0]}
-          maxBarSize={52}
-          isAnimationActive
-          animationDuration={800}
-          animationEasing="ease-out"
-        />
+        <Bar dataKey="value" fill={`url(#vbarGrad)`} radius={[6, 6, 0, 0]} maxBarSize={52} isAnimationActive animationDuration={800} />
       </BarChart>
     </ResponsiveContainer>
   )
 }
 
-// ── Gráfica barra horizontal ───────────────────────────────────────────────────
-function HBarChart({ data, isCurrency = false }: {
-  data: { name: string; value: number }[]
-  isCurrency?: boolean
-}) {
+function HBarChart({ data, isCurrency = false }: { data: { name: string; value: number }[]; isCurrency?: boolean }) {
   const t = useChartTheme()
   if (!data.length) return <p className="text-sm text-muted-foreground text-center py-6">Sin datos</p>
-  const gradId = "hbarGrad"
   return (
-    <ResponsiveContainer width="100%" height={Math.min(data.length * 42 + 20, 260)}>
+    <ResponsiveContainer width="100%" height={Math.min(data.length * 42 + 20, 280)}>
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 40, left: 4, bottom: 4 }}>
         <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={t.primary} stopOpacity={0.7} />
-            <stop offset="100%" stopColor={t.primary} stopOpacity={1} />
+          <linearGradient id="hbarGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.7} />
+            <stop offset="100%" stopColor="#7c3aed" stopOpacity={1} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke={t.grid} horizontal={false} />
         <XAxis type="number" tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false}
           tickFormatter={v => isCurrency ? `$${v}` : String(v)} />
-        <YAxis type="category" dataKey="name" tick={{ fill: t.tick, fontSize: 11 }} axisLine={false}
-          tickLine={false} width={90} />
+        <YAxis type="category" dataKey="name" tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false} width={95} />
         <Tooltip content={<FvTooltip isCurrency={isCurrency} />} cursor={{ fill: "hsl(var(--muted)/0.4)" }} />
-        <Bar
-          dataKey="value"
-          fill={`url(#${gradId})`}
-          radius={[0, 6, 6, 0]}
-          maxBarSize={28}
-          isAnimationActive
-          animationDuration={800}
-          animationEasing="ease-out"
-        />
+        <Bar dataKey="value" fill={`url(#hbarGrad)`} radius={[0, 6, 6, 0]} maxBarSize={28} isAnimationActive animationDuration={800} />
       </BarChart>
     </ResponsiveContainer>
   )
 }
 
-// ── Gráfica dona (pie) ─────────────────────────────────────────────────────────
 function DonutChart({ data }: { data: { name: string; value: number }[] }) {
   const t = useChartTheme()
   if (!data.length) return <p className="text-sm text-muted-foreground text-center py-6">Sin datos</p>
   return (
     <ResponsiveContainer width="100%" height={220}>
       <PieChart>
-        <Pie
-          data={data}
-          cx="50%"
-          cy="50%"
-          innerRadius={55}
-          outerRadius={80}
-          paddingAngle={3}
-          dataKey="value"
-          isAnimationActive
-          animationDuration={900}
-          animationEasing="ease-out"
-        >
-          {data.map((_, i) => (
-            <Cell key={i} fill={PALETTE[i % PALETTE.length]} strokeWidth={0} />
-          ))}
+        <Pie data={data} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value" isAnimationActive animationDuration={900}>
+          {data.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} strokeWidth={0} />)}
         </Pie>
-        <Tooltip
-          formatter={(v) => [typeof v === "number" ? fmtUSD(v) : v, ""]}
-          contentStyle={{
-            background: t.tooltipBg, border: `1px solid ${t.tooltipBorder}`,
-            borderRadius: 12, fontSize: 13,
-          }}
-          labelStyle={{ color: t.tooltipText }}
-        />
-        <Legend
-          iconType="circle"
-          iconSize={8}
-          formatter={(v) => <span style={{ fontSize: 11, color: t.tick }}>{v}</span>}
-        />
+        <Tooltip formatter={(v) => [typeof v === "number" ? fmtUSD(v) : v, ""]}
+          contentStyle={{ background: t.tooltipBg, border: `1px solid ${t.tooltipBorder}`, borderRadius: 12, fontSize: 12 }} />
+        <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 11, color: t.tick }}>{v}</span>} />
       </PieChart>
     </ResponsiveContainer>
   )
 }
 
+// ── Selector de año ────────────────────────────────────────────────────────────
+function YearPicker({ year, onChange }: { year: number; onChange: (y: number) => void }) {
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  return (
+    <div className="flex items-center gap-1 bg-muted/60 rounded-xl p-1">
+      <button onClick={() => onChange(year - 1)} disabled={year <= currentYear - 10}
+        className="p-1.5 rounded-lg hover:bg-card transition-colors disabled:opacity-30">
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      {years.reverse().map(y => (
+        <button key={y} onClick={() => onChange(y)}
+          className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${year === y ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-card"}`}>
+          {y}
+        </button>
+      ))}
+      <button onClick={() => onChange(year + 1)} disabled={year >= currentYear}
+        className="p-1.5 rounded-lg hover:bg-card transition-colors disabled:opacity-30">
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
+type Tab = "anual" | "ventas" | "cobros" | "inventario" | "pacientes" | "inactivos"
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "anual", label: "Vista Anual" },
+  { id: "ventas", label: "Ventas" },
+  { id: "cobros", label: "Cobros" },
+  { id: "inventario", label: "Inventario" },
+  { id: "pacientes", label: "Pacientes" },
+  { id: "inactivos", label: "Inactivos" },
+]
+
 export default function Reportes() {
-  const [tab, setTab]     = useState<Tab>("dashboard")
+  const [tab, setTab] = useState<Tab>("anual")
+  const [year, setYear] = useState(new Date().getFullYear())
   const [desde, setDesde] = useState(sixMonthsAgo())
   const [hasta, setHasta] = useState(today())
-  const [pageVentas, setPageVentas]       = useState(1)
-  const [pageCobros, setPageCobros]       = useState(1)
-  const [pageInv,    setPageInv]          = useState(1)
+  const [pageVentas, setPageVentas] = useState(1)
+  const [pageCobros, setPageCobros] = useState(1)
+  const [pageInv, setPageInv] = useState(1)
   const [perPageVentas, setPerPageVentas] = useState(15)
   const [perPageCobros, setPerPageCobros] = useState(15)
-  const [perPageInv,    setPerPageInv]    = useState(15)
+  const [perPageInv, setPerPageInv] = useState(15)
   const [mesesInactivos, setMesesInactivos] = useState(12)
   const t = useChartTheme()
 
-  const { data: kpis, isLoading: kpisLoading } = useQuery({
-    queryKey: ["reportes-dashboard"],
-    queryFn: () => api.get("/reportes/dashboard").then(r => r.data),
-    staleTime: 60_000,
+  const { data: anual, isLoading: anualLoading } = useQuery({
+    queryKey: ["reportes-anual", year],
+    queryFn: () => api.get("/reportes/anual", { params: { year } }).then(r => r.data),
+    staleTime: 120_000,
+    enabled: tab === "anual",
   })
 
-  const { data: analytics, isLoading: analyticsLoading, isError: analyticsError } = useQuery({
+  const { data: analytics } = useQuery({
     queryKey: ["reportes-analytics"],
     queryFn: () => api.get("/reportes/analytics").then(r => r.data),
     staleTime: 120_000,
@@ -308,128 +282,217 @@ export default function Reportes() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <PrintHeader title="Reportes y Estadísticas" subtitle={`Período: ${desde} — ${hasta}`} />
+      <PrintHeader title="Reportes y Estadísticas" subtitle={`Año ${year}`} />
 
-      <div className="flex items-start justify-between anim-fade-up no-print">
+      <div className="flex items-start justify-between gap-4 anim-fade-up no-print">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reportes</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Análisis y estadísticas del negocio</p>
+          <h1 className="text-2xl font-bold tracking-tight">Reportes & KPIs</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Análisis completo del negocio por año y período</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-1.5"
-                onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Imprimir / PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          {(tab === "anual") && <YearPicker year={year} onChange={y => { setYear(y) }} />}
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" /> PDF
+          </Button>
+        </div>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 bg-muted/50 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 bg-muted/50 p-1 rounded-xl w-fit overflow-x-auto no-print">
         {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={[
-              "px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150",
-              tab === t.id
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            ].join(" ")}
-          >
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={["px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-150 whitespace-nowrap",
+              tab === t.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"].join(" ")}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* ── RESUMEN ── */}
-      {tab === "dashboard" && (
+      {/* ── VISTA ANUAL ── */}
+      {tab === "anual" && (
         <div className="space-y-6 anim-fade-in">
-          {kpisLoading ? (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
-            </div>
-          ) : kpis && (
+          {anualLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Calculando KPIs {year}…</div>
+          ) : anual && (
             <>
+              {/* KPIs principales */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <MiniKpi
-                  label="Ventas del mes" rawValue={kpis.ventas_mes} formatter={fmtUSD}
-                  sub={`${kpis.cant_ventas_mes} ventas · Hoy: ${fmtUSD(kpis.ventas_hoy)}`}
-                  icon={DollarSign} color="bg-gradient-to-br from-blue-500 to-indigo-600"
-                />
-                <MiniKpi
-                  label="Cobros del mes" rawValue={kpis.cobros_mes} formatter={fmtUSD}
-                  sub={`Egresos: ${fmtUSD(kpis.egresos_mes)}`}
-                  icon={TrendingUp} color="bg-gradient-to-br from-emerald-500 to-teal-600"
-                />
-                <MiniKpi
-                  label="Pacientes nuevos" rawValue={kpis.pacientes_nuevos_mes}
-                  sub={kpis.mes} icon={Users}
-                  color="bg-gradient-to-br from-violet-500 to-purple-700"
-                />
-                <MiniKpi
-                  label="Órdenes activas" rawValue={kpis.ordenes_activas}
-                  sub={`${kpis.ordenes_listas} listas para entregar`}
-                  icon={ClipboardList} color="bg-gradient-to-br from-amber-500 to-orange-500"
-                />
+                <MiniKpi label="Ventas del año" rawValue={anual.totales.ventas} formatter={fmtUSD}
+                  sub={`${anual.totales.cant_ventas} ventas · Ticket prom: ${fmtUSD(anual.totales.ticket_promedio)}`}
+                  icon={DollarSign} color="bg-gradient-to-br from-blue-500 to-indigo-600" />
+                <MiniKpi label="Cobros del año" rawValue={anual.totales.cobros} formatter={fmtUSD}
+                  sub={`Egresos: ${fmtUSD(anual.totales.egresos)}`}
+                  icon={TrendingUp} color="bg-gradient-to-br from-emerald-500 to-teal-600" />
+                <MiniKpi label="Pacientes nuevos" rawValue={anual.totales.pacientes_nuevos}
+                  sub={`${anual.totales.consultas} consultas realizadas`}
+                  icon={Users} color="bg-gradient-to-br from-violet-500 to-purple-700" />
+                <MiniKpi label="Órdenes del año" rawValue={anual.totales.ordenes}
+                  sub={`Créditos: ${anual.creditos.cantidad} por ${fmtUSD(anual.creditos.total)}`}
+                  icon={ClipboardList} color="bg-gradient-to-br from-amber-500 to-orange-500" />
               </div>
 
-              {/* Resultado */}
-              <div className="glass rounded-2xl overflow-hidden p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 anim-fade-up">
+              {/* Resultado neto */}
+              <div className="glass rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 anim-fade-up">
                 <div>
-                  <p className="text-sm text-muted-foreground">Resultado neto del mes</p>
-                  <p className={`text-3xl font-bold tracking-tight ${kpis.resultado_mes >= 0 ? "text-emerald-500" : "text-destructive"}`}>
-                    {fmtUSD(kpis.resultado_mes)}
+                  <p className="text-sm text-muted-foreground">Resultado neto {year}</p>
+                  <p className={`text-4xl font-black tracking-tight ${anual.totales.resultado >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+                    {fmtUSD(anual.totales.resultado)}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Cobros − Egresos</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Cobros {fmtUSD(anual.totales.cobros)} − Egresos {fmtUSD(anual.totales.egresos)}</p>
                 </div>
-                <div className="text-sm space-y-1 text-right">
-                  <div><span className="text-muted-foreground">Turnos hoy: </span><strong>{kpis.turnos_hoy}</strong></div>
-                  <div><span className="text-muted-foreground">Ventas pendientes cobro: </span><strong>{kpis.ventas_pendientes_cobro}</strong></div>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  {[
+                    { label: "Ventas", v: fmtUSD(anual.totales.ventas), color: "text-blue-600" },
+                    { label: "Cobros", v: fmtUSD(anual.totales.cobros), color: "text-emerald-600" },
+                    { label: "Egresos", v: fmtUSD(anual.totales.egresos), color: "text-amber-600" },
+                  ].map(({ label, v, color }) => (
+                    <div key={label}>
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className={`text-lg font-bold tabular-nums ${color}`}>{v}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {analyticsLoading && (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Cargando gráficas…
-                </div>
-              )}
-              {analyticsError && (
-                <p className="text-sm text-destructive">Error cargando gráficas</p>
-              )}
+              {/* Gráfica combinada: Cobros + Egresos por mes */}
+              <ChartCard title={`Cobros vs Egresos — ${year}`}>
+                <ResponsiveContainer width="100%" height={250}>
+                  <ComposedChart data={anual.por_mes} margin={{ top: 8, right: 4, left: -15, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="cobGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#059669" stopOpacity={0.9} />
+                        <stop offset="100%" stopColor="#059669" stopOpacity={0.5} />
+                      </linearGradient>
+                      <linearGradient id="egrGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#d97706" stopOpacity={0.85} />
+                        <stop offset="100%" stopColor="#d97706" stopOpacity={0.4} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={t.grid} vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false}
+                      tickFormatter={v => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`} />
+                    <Tooltip content={<FvTooltip isCurrency />} />
+                    <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 11, color: t.tick }}>{v}</span>} />
+                    <Bar dataKey="cobros" name="Cobros" fill="url(#cobGrad)" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    <Bar dataKey="egresos" name="Egresos" fill="url(#egrGrad)" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                    <Line type="monotone" dataKey="resultado" name="Resultado neto" stroke="#7c3aed"
+                      strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </ChartCard>
 
-              {!analyticsLoading && !analyticsError && analytics && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <ChartCard title="Ventas por mes (últimos 12 meses)">
-                    <VBarChart
-                      data={(analytics.ventas_por_mes ?? []).map((r: any) => ({ name: fmtMes(r.mes), value: r.total }))}
-                      isCurrency
-                    />
-                  </ChartCard>
-                  <ChartCard title="Órdenes por estado">
-                    <HBarChart
-                      data={(analytics.ordenes_por_estado ?? []).map((r: any) => ({
-                        name: r.estado.replace("_", " "),
-                        value: r.cantidad,
-                      }))}
-                    />
-                  </ChartCard>
-                  <ChartCard title="Top productos más vendidos">
-                    <HBarChart
-                      data={(analytics.top_productos ?? []).slice(0, 8).map((r: any) => ({
-                        name: r.nombre.length > 18 ? r.nombre.slice(0, 18) + "…" : r.nombre,
-                        value: r.total,
-                      }))}
-                      isCurrency
-                    />
-                  </ChartCard>
-                  <ChartCard title="Cobros por método de pago">
-                    <DonutChart
-                      data={(analytics.cobros_por_metodo ?? []).map((r: any) => ({
-                        name: r.metodo,
-                        value: r.total,
-                      }))}
-                    />
-                  </ChartCard>
-                </div>
-              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Ventas por mes */}
+                <ChartCard title={`Ventas por mes — ${year}`}>
+                  <VBarChart data={anual.por_mes.map((m: any) => ({ name: m.label, value: m.ventas }))} isCurrency />
+                </ChartCard>
+
+                {/* Pacientes + consultas por mes */}
+                <ChartCard title={`Pacientes nuevos y consultas — ${year}`}>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ComposedChart data={anual.por_mes} margin={{ top: 8, right: 4, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={t.grid} vertical={false} />
+                      <XAxis dataKey="label" tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<FvTooltip isCurrency={false} />} />
+                      <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 11, color: t.tick }}>{v}</span>} />
+                      <Bar dataKey="pacientes_nuevos" name="Pac. nuevos" fill="#7c3aed" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                      <Line type="monotone" dataKey="consultas" name="Consultas" stroke="#0891b2" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+
+                {/* Top productos */}
+                <ChartCard title={`Top productos — ${year}`}>
+                  <HBarChart
+                    data={anual.top_productos.slice(0, 8).map((r: any) => ({
+                      name: r.nombre.length > 22 ? r.nombre.slice(0, 22) + "…" : r.nombre,
+                      value: r.total,
+                    }))}
+                    isCurrency
+                  />
+                </ChartCard>
+
+                {/* Métodos de pago */}
+                <ChartCard title={`Cobros por método de pago — ${year}`}>
+                  {anual.metodos_pago.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3 items-center">
+                      <DonutChart data={anual.metodos_pago.map((r: any) => ({ name: r.metodo, value: r.total }))} />
+                      <div className="space-y-1.5">
+                        {anual.metodos_pago.map((r: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between text-sm border-b border-border/40 pb-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
+                              <span className="text-xs text-muted-foreground capitalize">{r.metodo}</span>
+                            </div>
+                            <span className="text-xs font-semibold tabular-nums">{fmtUSD(r.total)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : <p className="text-sm text-muted-foreground py-4">Sin cobros en {year}</p>}
+                </ChartCard>
+
+                {/* Egresos por categoría */}
+                <ChartCard title={`Egresos por categoría — ${year}`}>
+                  <HBarChart
+                    data={anual.egresos_por_categoria.map((r: any) => ({
+                      name: r.categoria.length > 20 ? r.categoria.slice(0, 20) + "…" : r.categoria,
+                      value: r.total,
+                    }))}
+                    isCurrency
+                  />
+                </ChartCard>
+
+                {/* Origen pacientes */}
+                <ChartCard title={`Origen de nuevos pacientes — ${year}`}>
+                  {anual.origen_pacientes.length > 0 ? (
+                    <DonutChart data={anual.origen_pacientes.map((r: any) => ({ name: r.origen, value: r.cantidad }))} />
+                  ) : <p className="text-sm text-muted-foreground py-4">Sin registros de origen</p>}
+                </ChartCard>
+              </div>
+
+              {/* Tabla mensual */}
+              <div className="glass rounded-2xl overflow-x-auto anim-fade-up">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/40 border-b">
+                      {["Mes", "Ventas", "Cobros", "Egresos", "Resultado", "Pac. nuevos", "Consultas", "Órdenes"].map(h => (
+                        <th key={h} className={`px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide ${h === "Mes" ? "text-left" : "text-right"}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {anual.por_mes.map((m: any) => {
+                      const esMesActual = m.mes === new Date().getMonth() + 1 && year === new Date().getFullYear()
+                      return (
+                        <tr key={m.mes} className={`hover:bg-muted/20 transition-colors ${esMesActual ? "bg-primary/5 font-semibold" : ""}`}>
+                          <td className="px-4 py-2.5">{m.label} {esMesActual && <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded ml-1">actual</span>}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-blue-600">{fmtUSD(m.ventas)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600">{fmtUSD(m.cobros)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-amber-600">{fmtUSD(m.egresos)}</td>
+                          <td className={`px-4 py-2.5 text-right tabular-nums font-bold ${m.resultado >= 0 ? "text-emerald-600" : "text-destructive"}`}>{fmtUSD(m.resultado)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">{m.pacientes_nuevos}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">{m.consultas}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">{m.ordenes}</td>
+                        </tr>
+                      )
+                    })}
+                    {/* Totales */}
+                    <tr className="bg-muted/50 font-bold border-t-2 border-border">
+                      <td className="px-4 py-3 text-sm">TOTAL {year}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-blue-700">{fmtUSD(anual.totales.ventas)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{fmtUSD(anual.totales.cobros)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-amber-700">{fmtUSD(anual.totales.egresos)}</td>
+                      <td className={`px-4 py-3 text-right tabular-nums text-lg ${anual.totales.resultado >= 0 ? "text-emerald-700" : "text-destructive"}`}>{fmtUSD(anual.totales.resultado)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{anual.totales.pacientes_nuevos}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{anual.totales.consultas}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{anual.totales.ordenes}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </div>
@@ -439,19 +502,14 @@ export default function Reportes() {
       {tab === "ventas" && (
         <div className="space-y-5 anim-fade-in">
           <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="text-xs text-muted-foreground">Desde</label>
-              <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 w-40" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Hasta</label>
-              <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-9 w-40" />
-            </div>
+            <div><label className="text-xs text-muted-foreground">Desde</label>
+              <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 w-40" /></div>
+            <div><label className="text-xs text-muted-foreground">Hasta</label>
+              <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-9 w-40" /></div>
             <Button variant="outline" size="sm" onClick={() => downloadExcel("/reportes/ventas/excel", "ventas.xlsx", { desde, hasta })}>
               <Download className="h-4 w-4 mr-1" /> Excel
             </Button>
           </div>
-
           {ventasLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
           ) : ventas && (
@@ -468,14 +526,10 @@ export default function Reportes() {
                   </div>
                 ))}
               </div>
-
               {analytics?.ventas_por_mes?.length > 1 && (
                 <ChartCard title="Tendencia mensual">
                   <ResponsiveContainer width="100%" height={200}>
-                    <AreaChart
-                      data={analytics.ventas_por_mes.map((r: any) => ({ name: fmtMes(r.mes), value: r.total }))}
-                      margin={{ top: 8, right: 4, left: -20, bottom: 0 }}
-                    >
+                    <AreaChart data={analytics.ventas_por_mes.map((r: any) => ({ name: fmtMes(r.mes), value: r.total }))} margin={{ top: 8, right: 4, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="vGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
@@ -487,41 +541,28 @@ export default function Reportes() {
                       <YAxis tick={{ fill: t.tick, fontSize: 11 }} axisLine={false} tickLine={false}
                         tickFormatter={v => `$${v >= 1000 ? (v / 1000).toFixed(0) + "k" : v}`} />
                       <Tooltip content={<FvTooltip isCurrency />} />
-                      <Area type="monotone" dataKey="value" stroke="#7c3aed" strokeWidth={2.5}
-                        fill="url(#vGrad)" dot={false} activeDot={{ r: 5, fill: "#7c3aed", strokeWidth: 0 }}
-                        isAnimationActive animationDuration={800} animationEasing="ease-out" />
+                      <Area type="monotone" dataKey="value" stroke="#7c3aed" strokeWidth={2.5} fill="url(#vGrad)" dot={false} activeDot={{ r: 5, fill: "#7c3aed", strokeWidth: 0 }} isAnimationActive animationDuration={800} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </ChartCard>
               )}
-
               {analytics?.top_productos?.length > 0 && (
                 <ChartCard title="Top productos por ingreso">
-                  <HBarChart
-                    data={analytics.top_productos.map((r: any) => ({
-                      name: r.nombre.length > 20 ? r.nombre.slice(0, 20) + "…" : r.nombre,
-                      value: r.total,
-                    }))}
-                    isCurrency
-                  />
+                  <HBarChart data={analytics.top_productos.map((r: any) => ({ name: r.nombre.length > 20 ? r.nombre.slice(0, 20) + "…" : r.nombre, value: r.total }))} isCurrency />
                 </ChartCard>
               )}
-
               <div className="glass rounded-2xl overflow-hidden anim-fade-up">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-muted/40 border-b">
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">N°</th>
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Fecha</th>
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Paciente</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Total</th>
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Estado</th>
+                      {["N°", "Fecha", "Paciente", "Total", "Estado"].map(h => (
+                        <th key={h} className={`px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide ${h === "Total" ? "text-right" : "text-left"}`}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {ventas.filas.slice((pageVentas - 1) * perPageVentas, pageVentas * perPageVentas).map((v: any, i: number) => (
-                      <tr key={v.id} className="hover:bg-muted/30 transition-colors table-row-anim"
-                          style={{ animationDelay: `${i * 30}ms` }}>
+                      <tr key={v.id} className="hover:bg-muted/30 transition-colors" style={{ animationDelay: `${i * 30}ms` }}>
                         <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{v.numero}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{v.fecha}</td>
                         <td className="px-4 py-2.5">{v.paciente}</td>
@@ -542,74 +583,52 @@ export default function Reportes() {
       {tab === "cobros" && (
         <div className="space-y-5 anim-fade-in">
           <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="text-xs text-muted-foreground">Desde</label>
-              <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 w-40" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Hasta</label>
-              <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-9 w-40" />
-            </div>
+            <div><label className="text-xs text-muted-foreground">Desde</label>
+              <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 w-40" /></div>
+            <div><label className="text-xs text-muted-foreground">Hasta</label>
+              <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-9 w-40" /></div>
             <Button variant="outline" size="sm" onClick={() => downloadExcel("/reportes/cobros/excel", "cobros.xlsx", { desde, hasta })}>
               <Download className="h-4 w-4 mr-1" /> Excel
             </Button>
           </div>
-
           {cobrosLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
           ) : cobros && (
             <>
               <div className="grid grid-cols-2 gap-4">
-                <div className="glass rounded-2xl overflow-hidden p-4 text-center anim-fade-up">
-                  <p className="text-xs text-muted-foreground">Total cobrado</p>
-                  <p className="text-2xl font-bold text-emerald-500 tabular-nums">{fmtUSD(cobros.total)}</p>
-                </div>
-                <div className="bg-card border rounded-2xl p-4 text-center anim-fade-up" style={{ animationDelay: "60ms" }}>
-                  <p className="text-xs text-muted-foreground">N° cobros</p>
-                  <p className="text-2xl font-bold tabular-nums">{cobros.cantidad}</p>
-                </div>
+                <div className="glass rounded-2xl p-4 text-center"><p className="text-xs text-muted-foreground">Total cobrado</p><p className="text-2xl font-bold text-emerald-500 tabular-nums">{fmtUSD(cobros.total)}</p></div>
+                <div className="bg-card border rounded-2xl p-4 text-center"><p className="text-xs text-muted-foreground">N° cobros</p><p className="text-2xl font-bold tabular-nums">{cobros.cantidad}</p></div>
               </div>
-
               {cobros.por_forma_pago && Object.keys(cobros.por_forma_pago).length > 0 && (
                 <ChartCard title="Distribución por método de pago">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                    <DonutChart
-                      data={Object.entries(cobros.por_forma_pago as Record<string, number>)
-                        .sort((a, b) => b[1] - a[1])
-                        .map(([name, value]) => ({ name, value }))}
-                    />
+                    <DonutChart data={Object.entries(cobros.por_forma_pago as Record<string, number>).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }))} />
                     <div className="space-y-2">
-                      {Object.entries(cobros.por_forma_pago as Record<string, number>)
-                        .sort((a, b) => b[1] - a[1])
-                        .map(([k, v], i) => (
-                          <div key={k} className="flex items-center justify-between text-sm border-b border-border/50 pb-1.5">
-                            <div className="flex items-center gap-2">
-                              <div className="w-2.5 h-2.5 rounded-full" style={{ background: PALETTE[i % PALETTE.length] }} />
-                              <span className="capitalize text-muted-foreground">{k}</span>
-                            </div>
-                            <span className="font-semibold tabular-nums">{fmtUSD(v)}</span>
+                      {Object.entries(cobros.por_forma_pago as Record<string, number>).sort((a, b) => b[1] - a[1]).map(([k, v], i) => (
+                        <div key={k} className="flex items-center justify-between text-sm border-b border-border/50 pb-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full" style={{ background: PALETTE[i % PALETTE.length] }} />
+                            <span className="capitalize text-muted-foreground">{k}</span>
                           </div>
-                        ))}
+                          <span className="font-semibold tabular-nums">{fmtUSD(v)}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </ChartCard>
               )}
-
-              <div className="glass rounded-2xl overflow-hidden anim-fade-up">
+              <div className="glass rounded-2xl overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-muted/40 border-b">
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">N°</th>
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Fecha</th>
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Paciente</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Monto</th>
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Método</th>
+                      {["N°", "Fecha", "Paciente", "Monto", "Método"].map(h => (
+                        <th key={h} className={`px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide ${h === "Monto" ? "text-right" : "text-left"}`}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {cobros.filas.slice((pageCobros - 1) * perPageCobros, pageCobros * perPageCobros).map((c: any, i: number) => (
-                      <tr key={c.id} className="hover:bg-muted/30 transition-colors table-row-anim"
-                          style={{ animationDelay: `${i * 30}ms` }}>
+                    {cobros.filas.slice((pageCobros - 1) * perPageCobros, pageCobros * perPageCobros).map((c: any) => (
+                      <tr key={c.id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{c.numero}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">{c.fecha}</td>
                         <td className="px-4 py-2.5">{c.paciente}</td>
@@ -634,32 +653,20 @@ export default function Reportes() {
               <Download className="h-4 w-4 mr-1" /> Excel
             </Button>
           </div>
-
           {invLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
           ) : inventario && (
             <>
               <div className="grid grid-cols-3 gap-4">
-                <div className="glass rounded-2xl overflow-hidden p-4 text-center anim-fade-up">
-                  <p className="text-xs text-muted-foreground">Valor total inventario</p>
-                  <p className="text-2xl font-bold text-primary tabular-nums">{fmtUSD(inventario.valor_total)}</p>
-                </div>
-                <div className="bg-card border rounded-2xl p-4 text-center anim-fade-up" style={{ animationDelay: "60ms" }}>
-                  <p className="text-xs text-muted-foreground">Total productos</p>
-                  <p className="text-2xl font-bold tabular-nums">{inventario.total_productos}</p>
-                </div>
-                <div className="bg-card border rounded-2xl p-4 text-center anim-fade-up" style={{ animationDelay: "120ms" }}>
-                  <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
-                    <AlertTriangle className="h-3 w-3 text-amber-500" /> Stock bajo
-                  </p>
-                  <p className={`text-2xl font-bold tabular-nums ${inventario.alertas_stock > 0 ? "text-destructive" : "text-emerald-500"}`}>
-                    {inventario.alertas_stock}
-                  </p>
+                <div className="glass rounded-2xl p-4 text-center"><p className="text-xs text-muted-foreground">Valor total inventario</p><p className="text-2xl font-bold text-primary tabular-nums">{fmtUSD(inventario.valor_total)}</p></div>
+                <div className="bg-card border rounded-2xl p-4 text-center"><p className="text-xs text-muted-foreground">Total productos</p><p className="text-2xl font-bold tabular-nums">{inventario.total_productos}</p></div>
+                <div className="bg-card border rounded-2xl p-4 text-center">
+                  <p className="text-xs text-muted-foreground flex items-center justify-center gap-1"><AlertTriangle className="h-3 w-3 text-amber-500" /> Stock bajo</p>
+                  <p className={`text-2xl font-bold tabular-nums ${inventario.alertas_stock > 0 ? "text-destructive" : "text-emerald-500"}`}>{inventario.alertas_stock}</p>
                 </div>
               </div>
-
               {inventario.alertas_stock > 0 && (
-                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-2xl p-4 anim-fade-up">
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-2xl p-4">
                   <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-400 mb-2 flex items-center gap-1.5">
                     <AlertTriangle className="h-4 w-4" /> Productos con stock bajo
                   </h3>
@@ -667,56 +674,30 @@ export default function Reportes() {
                     {inventario.filas.filter((p: any) => p.alerta).map((p: any) => (
                       <div key={p.id} className="flex justify-between text-sm">
                         <span>{p.nombre}</span>
-                        <span className="text-destructive font-medium tabular-nums">
-                          Stock: {p.stock_actual} / Mín: {p.stock_minimo}
-                        </span>
+                        <span className="text-destructive font-medium tabular-nums">Stock: {p.stock_actual} / Mín: {p.stock_minimo}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-
-              {analytics?.top_productos?.length > 0 && (
-                <ChartCard title="Top productos por valor vendido">
-                  <HBarChart
-                    data={analytics.top_productos.slice(0, 10).map((r: any) => ({
-                      name: r.nombre.length > 20 ? r.nombre.slice(0, 20) + "…" : r.nombre,
-                      value: r.total,
-                    }))}
-                    isCurrency
-                  />
-                </ChartCard>
-              )}
-
-              <div className="glass rounded-2xl overflow-hidden anim-fade-up">
+              <div className="glass rounded-2xl overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-muted/40 border-b">
-                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Producto</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Stock</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Mín</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">P. Venta</th>
-                      <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Valor inv.</th>
-                      <th className="px-4 py-3" />
+                      {["Producto", "Stock", "Mín", "P. Venta", "Valor inv.", ""].map(h => (
+                        <th key={h} className={`px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide ${["Stock", "Mín", "P. Venta", "Valor inv."].includes(h) ? "text-right" : "text-left"}`}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {inventario.filas.slice((pageInv - 1) * perPageInv, pageInv * perPageInv).map((p: any, i: number) => (
-                      <tr key={p.id}
-                          className={`hover:bg-muted/30 transition-colors table-row-anim ${p.alerta ? "bg-destructive/5" : ""}`}
-                          style={{ animationDelay: `${i * 25}ms` }}>
+                    {inventario.filas.slice((pageInv - 1) * perPageInv, pageInv * perPageInv).map((p: any) => (
+                      <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${p.alerta ? "bg-destructive/5" : ""}`}>
                         <td className="px-4 py-2.5">{p.nombre}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums">{p.stock_actual}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{p.stock_minimo}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums">{fmtUSD(p.precio_venta)}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums font-medium">{fmtUSD(p.valor_inventario)}</td>
-                        <td className="px-4 py-2.5">
-                          {p.alerta && (
-                            <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full font-medium">
-                              Bajo
-                            </span>
-                          )}
-                        </td>
+                        <td className="px-4 py-2.5">{p.alerta && <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full font-medium">Bajo</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -724,6 +705,31 @@ export default function Reportes() {
                 <Paginador page={pageInv} total={inventario.filas.length} perPage={perPageInv} onChange={setPageInv} onPerPageChange={n => { setPerPageInv(n); setPageInv(1) }} />
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* ── PACIENTES ── */}
+      {tab === "pacientes" && (
+        <div className="space-y-5 anim-fade-in">
+          {!analytics ? (
+            <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <ChartCard title="Pacientes nuevos por mes">
+                <VBarChart data={(analytics.pacientes_por_mes ?? []).map((r: any) => ({ name: fmtMes(r.mes), value: r.cantidad }))} isCurrency={false} />
+              </ChartCard>
+              <ChartCard title="¿Cómo nos conocieron?">
+                {analytics.pacientes_por_origen?.length > 0 ? (
+                  <DonutChart data={analytics.pacientes_por_origen.map((r: any) => ({ name: r.origen, value: r.cantidad }))} />
+                ) : <p className="text-sm text-muted-foreground py-4">Sin datos de origen.</p>}
+              </ChartCard>
+              {analytics.top_productos?.length > 0 && (
+                <ChartCard title="Productos más vendidos" className="md:col-span-2">
+                  <HBarChart data={analytics.top_productos.slice(0, 8).map((r: any) => ({ name: r.nombre.length > 22 ? r.nombre.slice(0, 22) + "…" : r.nombre, value: r.total }))} isCurrency />
+                </ChartCard>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -737,55 +743,38 @@ export default function Reportes() {
               <div className="flex items-center gap-2 mt-1">
                 {[6, 12, 18, 24].map(m => (
                   <button key={m}
-                    className={[
-                      "px-3 py-1.5 text-sm rounded-lg border transition-all",
-                      mesesInactivos === m
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "border-border hover:bg-accent",
-                    ].join(" ")}
-                    onClick={() => setMesesInactivos(m)}
-                  >
-                    {m}m
-                  </button>
+                    className={["px-3 py-1.5 text-sm rounded-lg border transition-all",
+                      mesesInactivos === m ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-accent"].join(" ")}
+                    onClick={() => setMesesInactivos(m)}>{m}m</button>
                 ))}
-                <Input
-                  type="number" min="1" max="120"
-                  className="w-24 h-9"
-                  value={mesesInactivos}
-                  onChange={e => setMesesInactivos(Number(e.target.value))}
-                />
+                <Input type="number" min="1" max="120" className="w-24 h-9" value={mesesInactivos} onChange={e => setMesesInactivos(Number(e.target.value))} />
               </div>
             </div>
           </div>
-
           {inactivosLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
           ) : inactivos && (
             <>
-              <div className="glass rounded-2xl overflow-hidden p-4 flex items-center gap-3 anim-fade-up">
+              <div className="glass rounded-2xl p-4 flex items-center gap-3">
                 <Users className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-xs text-muted-foreground">Pacientes sin consulta en +{mesesInactivos} meses</p>
                   <p className="text-2xl font-bold">{inactivos.total}</p>
                 </div>
               </div>
-
               {inactivos.total > 0 && (
-                <div className="glass rounded-2xl overflow-hidden anim-fade-up">
+                <div className="glass rounded-2xl overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-muted/40 border-b">
-                        <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Paciente</th>
-                        <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Última consulta</th>
-                        <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Inactividad</th>
-                        <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Teléfono</th>
-                        <th className="px-4 py-3" />
+                        {["Paciente", "Última consulta", "Inactividad", "Teléfono", ""].map(h => (
+                          <th key={h} className={`px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide ${h === "Inactividad" ? "text-right" : "text-left"}`}>{h}</th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {(inactivos.filas ?? []).map((p: any, i: number) => (
-                        <tr key={p.id} className="hover:bg-muted/30 transition-colors table-row-anim"
-                            style={{ animationDelay: `${i * 20}ms` }}>
+                      {(inactivos.filas ?? []).map((p: any) => (
+                        <tr key={p.id} className="hover:bg-muted/30 transition-colors">
                           <td className="px-4 py-2.5 font-medium">{p.apellidos} {p.nombres}</td>
                           <td className="px-4 py-2.5 text-muted-foreground">{p.ultima_consulta ?? "Nunca"}</td>
                           <td className="px-4 py-2.5 text-right">
@@ -796,11 +785,8 @@ export default function Reportes() {
                           <td className="px-4 py-2.5 text-muted-foreground">{p.telefono ?? "—"}</td>
                           <td className="px-4 py-2.5">
                             {p.telefono && (
-                              <button
-                                onClick={() => enviarControlVisual(p.telefono, p.nombres, "")}
-                                className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30 transition-colors"
-                                title="Enviar WhatsApp de reactivación"
-                              >
+                              <button onClick={() => enviarControlVisual(p.telefono, p.nombres, "")}
+                                className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30 transition-colors" title="WhatsApp reactivación">
                                 <MessageCircle className="h-4 w-4" />
                               </button>
                             )}
@@ -811,75 +797,7 @@ export default function Reportes() {
                   </table>
                 </div>
               )}
-
-              {inactivos.total === 0 && (
-                <p className="text-muted-foreground text-sm text-center py-8">
-                  ¡Excelente! No hay pacientes inactivos con ese criterio.
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ── PACIENTES ── */}
-      {tab === "pacientes" && (
-        <div className="space-y-5 anim-fade-in">
-          {!analytics ? (
-            <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <ChartCard title="Pacientes nuevos por mes">
-                  <VBarChart
-                    data={(analytics.pacientes_por_mes ?? []).map((r: any) => ({
-                      name: fmtMes(r.mes),
-                      value: r.cantidad,
-                    }))}
-                    isCurrency={false}
-                  />
-                </ChartCard>
-
-                <ChartCard title="¿Cómo nos conocieron?">
-                  {analytics.pacientes_por_origen?.length > 0 ? (
-                    <DonutChart
-                      data={analytics.pacientes_por_origen.map((r: any) => ({
-                        name: r.origen,
-                        value: r.cantidad,
-                      }))}
-                    />
-                  ) : (
-                    <p className="text-sm text-muted-foreground py-4">
-                      Sin datos de origen. Completa el campo "Cómo nos conoció" al registrar pacientes.
-                    </p>
-                  )}
-                </ChartCard>
-              </div>
-
-              {analytics.top_productos?.length > 0 && (
-                <ChartCard title="Productos más vendidos (por ingreso)">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <HBarChart
-                      data={analytics.top_productos.slice(0, 8).map((r: any) => ({
-                        name: r.nombre.length > 20 ? r.nombre.slice(0, 20) + "…" : r.nombre,
-                        value: r.total,
-                      }))}
-                      isCurrency
-                    />
-                    <div className="space-y-1.5">
-                      {analytics.top_productos.slice(0, 10).map((r: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between text-sm border-b border-border/50 pb-1.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PALETTE[i % PALETTE.length] }} />
-                            <span className="truncate max-w-[55%] text-muted-foreground">{r.nombre}</span>
-                          </div>
-                          <span className="font-semibold tabular-nums">{fmtUSD(r.total)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </ChartCard>
-              )}
+              {inactivos.total === 0 && <p className="text-muted-foreground text-sm text-center py-8">¡Excelente! No hay pacientes inactivos con ese criterio.</p>}
             </>
           )}
         </div>

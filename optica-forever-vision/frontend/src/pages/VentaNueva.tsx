@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import PacienteCombobox from "@/components/PacienteCombobox"
 
-interface Producto { id: number; nombre: string; codigo: string | null; precio_venta: number; stock_actual: number; unidad: string }
+interface Producto { id: number; nombre: string; codigo: string | null; precio_venta: number; stock_actual: number; unidad: string; proveedor?: { id: number; nombre: string } | null }
 interface CartItem { producto_id: number | null; descripcion: string; cantidad: number; precio_unitario: number; descuento_pct: number; garantia_meses: number | null }
 
 function calcSubtotal(it: CartItem) {
@@ -132,7 +132,10 @@ export default function VentaNueva() {
                   <span className="text-xs text-muted-foreground">{p.codigo ?? "Sin código"}</span>
                   <span className="text-sm font-semibold text-primary">${Number(p.precio_venta).toFixed(2)}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">Stock: {Number(p.stock_actual).toFixed(0)} {p.unidad}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Stock: {Number(p.stock_actual).toFixed(0)} {p.unidad}</span>
+                  {p.proveedor && <span className="text-xs text-muted-foreground/70 italic">{p.proveedor.nombre}</span>}
+                </div>
               </button>
             ))}
             {busqueda && productos.length === 0 && (

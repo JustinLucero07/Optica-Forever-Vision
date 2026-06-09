@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowLeft, Plus, Calendar, Stethoscope, Loader2, MessageCircle,
   Camera, Trash2, StickyNote, Send, DollarSign, CreditCard, ShoppingBag,
-  History, CheckCircle, XCircle,
+  History, CheckCircle, XCircle, TrendingUp, Eye, Gift,
 } from "lucide-react"
 
 import { api } from "@/lib/api"
@@ -125,29 +125,34 @@ function EstadoCuenta({ pacienteId }: { pacienteId: number | string }) {
         {isLoading && <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>}
         {data && (
           <>
-            <div className="grid grid-cols-3 gap-4">
-              <div className={`rounded-xl p-3 text-center ${data.total_deuda > 0 ? "bg-red-50 dark:bg-red-950/20 border border-red-200/50" : "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50"}`}>
-                <p className="text-xs text-muted-foreground">Deuda total</p>
-                <p className={`text-xl font-bold tabular-nums ${data.total_deuda > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+            {/* Deuda total — fila completa, prominente */}
+            <div className={`rounded-xl px-4 py-3 flex items-center justify-between ${data.total_deuda > 0 ? "bg-red-50 dark:bg-red-950/20 border border-red-200/50" : "bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50"}`}>
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Deuda total</p>
+                <p className={`text-2xl font-bold tabular-nums leading-none ${data.total_deuda > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                   {fmt(data.total_deuda)}
                 </p>
               </div>
-              <div className="rounded-xl p-3 text-center bg-muted/30 border border-border/50">
-                <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+              <DollarSign className={`h-8 w-8 opacity-20 ${data.total_deuda > 0 ? "text-red-500" : "text-emerald-500"}`} />
+            </div>
+            {/* Ventas pendientes + Créditos activos */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl px-4 py-3 bg-muted/40 border border-border/50">
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
                   <ShoppingBag className="h-3 w-3" /> Ventas pend.
                 </p>
-                <p className="text-xl font-bold">{ventas.length}</p>
+                <p className="text-2xl font-bold leading-none">{ventas.length}</p>
                 {data.total_ventas_pendientes > 0 && (
-                  <p className="text-xs text-amber-600 font-medium">{fmt(data.total_ventas_pendientes)}</p>
+                  <p className="text-xs text-amber-600 font-semibold mt-1">{fmt(data.total_ventas_pendientes)}</p>
                 )}
               </div>
-              <div className="rounded-xl p-3 text-center bg-muted/30 border border-border/50">
-                <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+              <div className="rounded-xl px-4 py-3 bg-muted/40 border border-border/50">
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
                   <CreditCard className="h-3 w-3" /> Créditos activos
                 </p>
-                <p className="text-xl font-bold">{creditos.length}</p>
+                <p className="text-2xl font-bold leading-none">{creditos.length}</p>
                 {data.total_creditos_pendientes > 0 && (
-                  <p className="text-xs text-red-600 font-medium">{fmt(data.total_creditos_pendientes)}</p>
+                  <p className="text-xs text-red-600 font-semibold mt-1">{fmt(data.total_creditos_pendientes)}</p>
                 )}
               </div>
             </div>
@@ -499,7 +504,7 @@ function TrialLCSection({ pacienteId }: { pacienteId: number | string }) {
       <CardHeader className="cursor-pointer" onClick={() => setOpen(v => !v)}>
         <CardTitle className="text-base flex items-center gap-2 justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">👁</span> Prueba de lentes de contacto
+            <Eye className="h-5 w-5 text-cyan-500" /> Prueba de lentes de contacto
           </div>
           <span className="text-xs text-muted-foreground font-normal">{open ? "▲ cerrar" : "▼ ver"}</span>
         </CardTitle>
@@ -614,7 +619,7 @@ function EvolucionGraduacion({ consultas }: { consultas: any[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <span>📈</span> Evolución de graduación
+          <TrendingUp className="h-5 w-5 text-indigo-500" /> Evolución de graduación
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -656,6 +661,13 @@ export default function PacienteDetalle() {
     enabled: !!id,
   })
 
+  const { data: ordenesActivas = [] } = useQuery<{ id: number; numero: string; estado: string; tipo: string }[]>({
+    queryKey: ["ordenes-paciente", id],
+    queryFn: () => api.get("/ordenes", { params: { paciente_id: id, limit: 20 } }).then(r => r.data),
+    enabled: !!id,
+    staleTime: 60_000,
+  })
+
   if (cargandoPac) {
     return (
       <div className="p-6 flex items-center gap-2 text-muted-foreground">
@@ -683,142 +695,177 @@ export default function PacienteDetalle() {
     enviarControlVisual(paciente.telefono, paciente.nombres, fmtFechaControl(proximoControl))
   }
 
+  const ultimaConsulta = consultas.length > 0
+    ? consultas.reduce((a: any, b: any) => a.fecha > b.fecha ? a : b)
+    : null
+  const diasSinConsulta = ultimaConsulta
+    ? Math.floor((Date.now() - new Date(ultimaConsulta.fecha).getTime()) / 86_400_000)
+    : null
+  const ordenesEnProceso = ordenesActivas.filter(o => !["entregado", "rechazado"].includes(o.estado))
+
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+    <div className="p-6 space-y-5">
+      {/* ── Header ── */}
+      <div className="flex items-start gap-3">
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="mt-1">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">{nombreCompleto}</h1>
-          <Badge variant="outline" className="mt-0.5">{paciente.numero}</Badge>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold truncate">{nombreCompleto}</h1>
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            <Badge variant="outline">{paciente.numero}</Badge>
+            {ordenesEnProceso.length > 0 && (
+              <Link to="/ordenes">
+                <Badge className="bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 cursor-pointer">
+                  {ordenesEnProceso.length} orden{ordenesEnProceso.length > 1 ? "es" : ""} en proceso
+                </Badge>
+              </Link>
+            )}
+            {diasSinConsulta !== null && diasSinConsulta > 365 && (
+              <Badge className="bg-red-100 text-red-700 border border-red-300">
+                Sin consulta hace {Math.floor(diasSinConsulta / 30)} meses
+              </Badge>
+            )}
+            {diasSinConsulta !== null && diasSinConsulta <= 365 && diasSinConsulta > 0 && (
+              <span className="text-xs text-muted-foreground">
+                Última consulta hace {diasSinConsulta} día{diasSinConsulta !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
         </div>
+        {(rol === "admin" || rol === "optometrista") && (
+          <Button size="sm" asChild className="shrink-0">
+            <Link to={`/pacientes/${id}/consultas/nueva`}>
+              <Plus className="h-4 w-4 mr-1" /> Nueva Consulta
+            </Link>
+          </Button>
+        )}
       </div>
 
-      {/* ── Datos + foto side-by-side ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Datos personales</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col md:flex-row gap-6">
-          <FotoSection pacienteId={id!} foto={paciente.foto} />
-          <div className="flex-1 grid grid-cols-2 md:grid-cols-3 gap-4">
-            {campo("Cédula", paciente.cedula)}
-            {campo("Fecha de nacimiento", paciente.fecha_nacimiento)}
-            {campo("Género", paciente.genero)}
-            {campo("Ocupación", paciente.ocupacion)}
-            {campo("Teléfono", paciente.telefono)}
-            {campo("Teléfono 2", paciente.telefono_2)}
-            {campo("Email", paciente.email)}
-            {campo("Dirección", paciente.direccion)}
-            {campo("Origen / Cómo nos conoció", paciente.origen)}
-            {campo("Referido por", paciente.referido_por)}
-            {campo("Armazón preferido", paciente.armazon_tipo)}
-            {campo("Notas de preferencias", paciente.armazon_notas)}
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── Layout dos columnas ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-5 items-start">
 
-      {/* ── Estado de cuenta ── */}
-      <EstadoCuenta pacienteId={id!} />
+        {/* ── COLUMNA IZQUIERDA ── */}
+        <div className="space-y-5 min-w-0">
 
-      {paciente.telefono && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <MessageCircle className="h-5 w-5 text-green-600" /> WhatsApp
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-green-300 text-green-700 hover:bg-green-50"
-              onClick={handleControlVisual}
-              title={proximoControl ? `Próximo control: ${fmtFechaControl(proximoControl)}` : "Sin próximo control registrado"}
-            >
-              <MessageCircle className="h-4 w-4 mr-1" />
-              {proximoControl
-                ? `Control visual · ${fmtFechaControl(proximoControl)}`
-                : "Control visual (sin fecha)"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-green-300 text-green-700 hover:bg-green-50"
-              onClick={() => enviarCumpleanios(paciente.telefono, paciente.nombres)}
-            >
-              <MessageCircle className="h-4 w-4 mr-1" />
-              Oferta de cumpleaños 🎂
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+          {/* Datos personales */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Datos personales</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col sm:flex-row gap-5">
+              <FotoSection pacienteId={id!} foto={paciente.foto} />
+              <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {campo("Cédula", paciente.cedula)}
+                {campo("Nacimiento", paciente.fecha_nacimiento)}
+                {campo("Género", paciente.genero)}
+                {campo("Ocupación", paciente.ocupacion)}
+                {campo("Teléfono", paciente.telefono)}
+                {campo("Teléfono 2", paciente.telefono_2)}
+                {campo("Email", paciente.email)}
+                {campo("Dirección", paciente.direccion)}
+                {campo("Cómo nos conoció", paciente.origen)}
+                {campo("Referido por", paciente.referido_por)}
+                {paciente.referido_a_nombre && campo("Referido al optometrista", paciente.referido_a_nombre)}
+                {campo("Armazón preferido", paciente.armazon_tipo)}
+                {campo("Notas preferencias", paciente.armazon_notas)}
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* ── Notas internas ── */}
-      <NotasSection pacienteId={id!} />
+          {/* Historial de actividad */}
+          <HistorialSection consultas={consultas} />
 
-      {/* ── Historial WhatsApp ── */}
-      <WaLogsSection pacienteId={id!} />
+          {/* Evolución de graduación */}
+          <EvolucionGraduacion consultas={consultas} />
 
-      {/* ── Garantías ── */}
-      <GarantiasSection pacienteId={id!} />
+          {/* Historial de consultas */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Stethoscope className="h-5 w-5" /> Consultas
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {cargandoCons && (
+                <div className="px-4 py-6 flex items-center gap-2 text-muted-foreground text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
+                </div>
+              )}
+              {!cargandoCons && consultas.length === 0 && (
+                <p className="px-4 py-6 text-muted-foreground text-sm">Sin consultas registradas.</p>
+              )}
+              <div className="divide-y">
+                {consultas.map((c: any) => (
+                  <Link key={c.id} to={`/consultas/${c.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm">{c.fecha} <Badge variant="outline" className="ml-1 text-xs">{c.numero}</Badge></p>
+                        {c.motivo_consulta && (
+                          <p className="text-xs text-muted-foreground truncate">{c.motivo_consulta}</p>
+                        )}
+                      </div>
+                    </div>
+                    {c.diagnostico && (
+                      <p className="text-xs text-muted-foreground hidden lg:block max-w-[200px] truncate ml-3">{c.diagnostico}</p>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* ── Trial LC ── */}
-      <TrialLCSection pacienteId={id!} />
-
-      {/* ── Historial de actividad ── */}
-      <HistorialSection consultas={consultas} />
-
-      {/* ── Evolución de graduación ── */}
-      <EvolucionGraduacion consultas={consultas} />
-
-      {/* ── Historial consultas ── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Stethoscope className="h-5 w-5" /> Consultas
-          </h2>
-          {(rol === "admin" || rol === "optometrista") && (
-            <Button size="sm" asChild>
-              <Link to={`/pacientes/${id}/consultas/nueva`}>
-                <Plus className="h-4 w-4 mr-1" /> Nueva Consulta
-              </Link>
-            </Button>
-          )}
         </div>
 
-        {cargandoCons && (
-          <div className="text-muted-foreground flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" /> Cargando consultas…
-          </div>
-        )}
+        {/* ── COLUMNA DERECHA (sidebar) ── */}
+        <div className="space-y-5">
 
-        {!cargandoCons && consultas.length === 0 && (
-          <p className="text-muted-foreground text-sm py-4">Este paciente no tiene consultas aún.</p>
-        )}
+          {/* Estado de cuenta */}
+          <EstadoCuenta pacienteId={id!} />
 
-        <div className="space-y-2">
-          {consultas.map((c: any) => (
-            <Link key={c.id} to={`/consultas/${c.id}`} className="block">
-              <div className="rounded-md border p-4 hover:bg-muted/30 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium text-sm">{c.fecha} — <Badge variant="outline">{c.numero}</Badge></p>
-                      {c.motivo_consulta && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{c.motivo_consulta}</p>
-                      )}
-                    </div>
-                  </div>
-                  {c.diagnostico && (
-                    <p className="text-xs text-muted-foreground hidden md:block max-w-xs line-clamp-1">{c.diagnostico}</p>
-                  )}
-                </div>
-              </div>
-            </Link>
-          ))}
+          {/* WhatsApp */}
+          {paciente.telefono && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4 text-green-600" /> WhatsApp
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                <Button
+                  variant="outline" size="sm"
+                  className="justify-start border-green-300 text-green-700 hover:bg-green-50"
+                  onClick={handleControlVisual}
+                  title={proximoControl ? `Próximo control: ${fmtFechaControl(proximoControl)}` : "Sin próximo control"}
+                >
+                  <MessageCircle className="h-3.5 w-3.5 mr-2" />
+                  {proximoControl ? `Control · ${fmtFechaControl(proximoControl)}` : "Control visual (sin fecha)"}
+                </Button>
+                <Button
+                  variant="outline" size="sm"
+                  className="justify-start border-green-300 text-green-700 hover:bg-green-50"
+                  onClick={() => enviarCumpleanios(paciente.telefono, paciente.nombres)}
+                >
+                  <Gift className="h-3.5 w-3.5 mr-2" />
+                  Oferta de cumpleaños
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Notas internas */}
+          <NotasSection pacienteId={id!} />
+
+          {/* Garantías */}
+          <GarantiasSection pacienteId={id!} />
+
+          {/* Trial LC */}
+          <TrialLCSection pacienteId={id!} />
+
+          {/* Historial WhatsApp */}
+          <WaLogsSection pacienteId={id!} />
+
         </div>
       </div>
     </div>

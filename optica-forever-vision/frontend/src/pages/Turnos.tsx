@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Link } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 import { toast } from "sonner"
-import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, MessageCircle } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, MessageCircle, Stethoscope } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -113,6 +113,8 @@ const EMPTY_FORM = {
 
 // ── Componente principal ───────────────────────────────────────────────────────
 export default function Turnos() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [weekStart, setWeekStart] = useState(() => weekMonday(new Date()))
   const [mesActual, setMesActual] = useState(() => new Date())
   const [view, setView] = useState<"semana" | "lista" | "mes">("lista")
@@ -160,6 +162,20 @@ export default function Turnos() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["turnos"] }); toast.success("Turno eliminado") },
     onError: () => toast.error("Error al eliminar"),
   })
+
+  useEffect(() => {
+    const fc = (location.state as any)?.fromConsulta
+    if (fc) {
+      setEditTurno(null)
+      setForm({
+        ...EMPTY_FORM,
+        paciente_id: fc.paciente_id ? String(fc.paciente_id) : "",
+        motivo: fc.motivo ?? "Control visual",
+        fecha: fc.fecha ?? toISO(new Date()),
+      })
+      setOpenForm(true)
+    }
+  }, [])
 
   function openNew(fecha?: string) {
     setEditTurno(null)
@@ -432,8 +448,15 @@ export default function Turnos() {
                           <td className="px-4 py-2">{t.motivo}</td>
                           <td className="px-4 py-2"><EstadoBadge estado={t.estado} /></td>
                           <td className="px-4 py-2">
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 flex-wrap">
                               <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>Editar</Button>
+                              {t.estado === "asistido" && t.paciente_id && (
+                                <Button variant="ghost" size="sm" className="text-cyan-700"
+                                  title="Registrar consulta para este turno"
+                                  onClick={() => navigate(`/pacientes/${t.paciente_id}/consultas/nueva`)}>
+                                  <Stethoscope className="h-4 w-4 mr-1" /> Consulta
+                                </Button>
+                              )}
                               {t.paciente_id && pacienteTelefono(t.paciente_id) && (
                                 <Button variant="ghost" size="sm" className="text-green-700"
                                   title="Enviar recordatorio WhatsApp" onClick={() => enviarRecordatorio(t)}>

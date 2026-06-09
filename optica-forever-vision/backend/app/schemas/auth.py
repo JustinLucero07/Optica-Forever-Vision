@@ -15,6 +15,7 @@ class UserPublic(BaseModel):
     email: str
     full_name: str
     role: UserRole
+    firma_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -37,6 +38,7 @@ class UserUpdate(BaseModel):
     role: UserRole | None = None
     is_active: bool | None = None
     password: str | None = None
+    firma_url: str | None = None
 
 
 class UserOut(BaseModel):
@@ -45,5 +47,6 @@ class UserOut(BaseModel):
     full_name: str
     role: UserRole
     is_active: bool
+    firma_url: str | None = None
     created_at: datetime
     model_config = {"from_attributes": True}

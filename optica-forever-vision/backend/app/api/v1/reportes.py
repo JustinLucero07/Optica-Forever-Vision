@@ -769,6 +769,208 @@ def analytics(
     return result
 
 
+# ── Reporte Anual completo ─────────────────────────────────────────────────────
+
+@router.get("/anual")
+def reporte_anual(
+    year: int = Query(default=None),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    if year is None:
+        year = date.today().year
+
+    inicio = date(year, 1, 1)
+    fin = date(year, 12, 31)
+    meses_labels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+    # ── Ventas por mes ─────────────────────────────────────────────────────────
+    rows_v = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM fecha)::int AS mes,
+               COALESCE(SUM(total), 0) AS total,
+               COUNT(*) AS cantidad
+        FROM ventas
+        WHERE estado != 'anulado'
+          AND fecha BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM fecha)
+        ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    ventas_dict = {r.mes: (float(r.total), int(r.cantidad)) for r in rows_v}
+
+    # ── Cobros por mes ─────────────────────────────────────────────────────────
+    rows_c = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM fecha)::int AS mes,
+               COALESCE(SUM(monto), 0) AS total
+        FROM cobros
+        WHERE fecha BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM fecha)
+        ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    cobros_dict = {r.mes: float(r.total) for r in rows_c}
+
+    # ── Egresos por mes ────────────────────────────────────────────────────────
+    rows_e = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM fecha)::int AS mes,
+               COALESCE(SUM(monto), 0) AS total
+        FROM egresos
+        WHERE fecha BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM fecha)
+        ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    egresos_dict = {r.mes: float(r.total) for r in rows_e}
+
+    # ── Pacientes nuevos por mes ───────────────────────────────────────────────
+    rows_p = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM created_at)::int AS mes,
+               COUNT(*) AS cantidad
+        FROM pacientes
+        WHERE created_at BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM created_at)
+        ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    pac_dict = {r.mes: int(r.cantidad) for r in rows_p}
+
+    # ── Consultas por mes ──────────────────────────────────────────────────────
+    rows_con = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM fecha)::int AS mes,
+               COUNT(*) AS cantidad
+        FROM consultas
+        WHERE fecha BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM fecha)
+        ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    cons_dict = {r.mes: int(r.cantidad) for r in rows_con}
+
+    # ── Órdenes por mes ────────────────────────────────────────────────────────
+    rows_o = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM fecha_envio)::int AS mes,
+               COUNT(*) AS cantidad
+        FROM ordenes_trabajo
+        WHERE fecha_envio BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM fecha_envio)
+        ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    ord_dict = {r.mes: int(r.cantidad) for r in rows_o}
+
+    # ── Construir series mensuales ─────────────────────────────────────────────
+    por_mes = []
+    for m in range(1, 13):
+        v = ventas_dict.get(m, (0, 0))
+        c = cobros_dict.get(m, 0)
+        e = egresos_dict.get(m, 0)
+        por_mes.append({
+            "mes": m,
+            "label": meses_labels[m - 1],
+            "ventas": v[0],
+            "cant_ventas": v[1],
+            "cobros": c,
+            "egresos": e,
+            "resultado": round(c - e, 2),
+            "pacientes_nuevos": pac_dict.get(m, 0),
+            "consultas": cons_dict.get(m, 0),
+            "ordenes": ord_dict.get(m, 0),
+        })
+
+    # ── Totales ────────────────────────────────────────────────────────────────
+    total_ventas = sum(x["ventas"] for x in por_mes)
+    total_cobros = sum(x["cobros"] for x in por_mes)
+    total_egresos = sum(x["egresos"] for x in por_mes)
+    total_pac = sum(x["pacientes_nuevos"] for x in por_mes)
+    total_cons = sum(x["consultas"] for x in por_mes)
+    total_ords = sum(x["ordenes"] for x in por_mes)
+    total_cant_ventas = sum(x["cant_ventas"] for x in por_mes)
+
+    # ── Top productos ──────────────────────────────────────────────────────────
+    rows_tp = db.execute(text("""
+        SELECT vi.descripcion,
+               SUM(vi.cantidad) AS cant,
+               SUM(vi.subtotal) AS total
+        FROM venta_items vi
+        JOIN ventas v ON vi.venta_id = v.id
+        WHERE v.estado != 'anulado'
+          AND v.fecha BETWEEN :inicio AND :fin
+        GROUP BY vi.descripcion
+        ORDER BY SUM(vi.subtotal) DESC
+        LIMIT 10
+    """), {"inicio": inicio, "fin": fin}).all()
+    top_productos = [{"nombre": r.descripcion, "cantidad": float(r.cant), "total": float(r.total)} for r in rows_tp]
+
+    # ── Métodos de pago ────────────────────────────────────────────────────────
+    rows_mp = db.execute(text("""
+        SELECT metodo_pago, SUM(monto) AS total, COUNT(*) AS cant
+        FROM cobros
+        WHERE fecha BETWEEN :inicio AND :fin
+        GROUP BY metodo_pago
+        ORDER BY SUM(monto) DESC
+    """), {"inicio": inicio, "fin": fin}).all()
+    metodos_pago = [{"metodo": r.metodo_pago, "total": float(r.total), "cantidad": int(r.cant)} for r in rows_mp]
+
+    # ── Egresos por categoría ──────────────────────────────────────────────────
+    rows_ec = db.execute(text("""
+        SELECT categoria, SUM(monto) AS total, COUNT(*) AS cant
+        FROM egresos
+        WHERE fecha BETWEEN :inicio AND :fin
+        GROUP BY categoria
+        ORDER BY SUM(monto) DESC
+    """), {"inicio": inicio, "fin": fin}).all()
+    egresos_por_cat = [{"categoria": r.categoria, "total": float(r.total), "cantidad": int(r.cant)} for r in rows_ec]
+
+    # ── Origen de pacientes ────────────────────────────────────────────────────
+    rows_ori = db.execute(text("""
+        SELECT COALESCE(origen, 'No especificado') AS origen, COUNT(*) AS cant
+        FROM pacientes
+        WHERE created_at BETWEEN :inicio AND :fin
+        GROUP BY COALESCE(origen, 'No especificado')
+        ORDER BY COUNT(*) DESC
+    """), {"inicio": inicio, "fin": fin}).all()
+    origen_pacientes = [{"origen": r.origen, "cantidad": int(r.cant)} for r in rows_ori]
+
+    # ── Órdenes por tipo ───────────────────────────────────────────────────────
+    rows_ot = db.execute(text("""
+        SELECT tipo, COUNT(*) AS cant, COALESCE(SUM(precio_lab), 0) AS total_lab
+        FROM ordenes_trabajo
+        WHERE fecha_envio BETWEEN :inicio AND :fin
+        GROUP BY tipo
+        ORDER BY COUNT(*) DESC
+    """), {"inicio": inicio, "fin": fin}).all()
+    ordenes_por_tipo = [{"tipo": r.tipo, "cantidad": int(r.cant), "total_lab": float(r.total_lab)} for r in rows_ot]
+
+    # ── Créditos otorgados ─────────────────────────────────────────────────────
+    try:
+        rows_cr = db.execute(text("""
+            SELECT COUNT(*) AS cant, COALESCE(SUM(monto_total), 0) AS total
+            FROM creditos
+            WHERE fecha_inicio BETWEEN :inicio AND :fin
+        """), {"inicio": inicio, "fin": fin}).one()
+        creditos = {"cantidad": int(rows_cr.cant), "total": float(rows_cr.total)}
+    except Exception:
+        db.rollback()
+        creditos = {"cantidad": 0, "total": 0}
+
+    return {
+        "year": year,
+        "por_mes": por_mes,
+        "totales": {
+            "ventas": total_ventas,
+            "cant_ventas": total_cant_ventas,
+            "cobros": total_cobros,
+            "egresos": total_egresos,
+            "resultado": round(total_cobros - total_egresos, 2),
+            "pacientes_nuevos": total_pac,
+            "consultas": total_cons,
+            "ordenes": total_ords,
+            "ticket_promedio": round(total_ventas / total_cant_ventas, 2) if total_cant_ventas > 0 else 0,
+        },
+        "top_productos": top_productos,
+        "metodos_pago": metodos_pago,
+        "egresos_por_categoria": egresos_por_cat,
+        "origen_pacientes": origen_pacientes,
+        "ordenes_por_tipo": ordenes_por_tipo,
+        "creditos": creditos,
+    }
+
+
 # ── Pacientes inactivos ────────────────────────────────────────────────────────
 
 @router.get("/pacientes-inactivos")

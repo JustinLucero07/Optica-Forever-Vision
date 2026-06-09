@@ -1,8 +1,8 @@
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Pencil, Loader2, UserCheck, UserX, Search } from "lucide-react"
+import { Plus, Pencil, Loader2, UserCheck, UserX, Search, Upload, X } from "lucide-react"
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,7 @@ interface Usuario {
   email: string
   role: Rol
   is_active: boolean
+  firma_url: string | null
   created_at: string
 }
 
@@ -55,8 +56,13 @@ export default function Usuarios() {
   const [editando, setEditando] = useState<Usuario | null>(null)
   const [busqueda, setBusqueda] = useState("")
   const [filtroRol, setFiltroRol] = useState("")
+  const [firmaPreview, setFirmaPreview] = useState<string | null>(null)
+  const firmaInputRef = useRef<HTMLInputElement>(null)
   const qc = useQueryClient()
   const currentUserId = useAuthStore((s) => s.user?.id)
+  const setSession = useAuthStore((s) => s.setSession)
+  const authToken = useAuthStore((s) => s.token)
+  const authUser = useAuthStore((s) => s.user)
 
   const { data: usuarios = [], isLoading } = useQuery<Usuario[]>({
     queryKey: ["usuarios"],
@@ -95,10 +101,15 @@ export default function Usuarios() {
         role: d.role,
       }
       if (d.password) payload.password = d.password
+      if (firmaPreview !== null) payload.firma_url = firmaPreview || null
       return api.put(`/usuarios/${editando!.id}`, payload)
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["usuarios"] })
+      // Si editamos el usuario actual, actualizar el store con la nueva firma
+      if (editando?.id === currentUserId && authToken && authUser) {
+        setSession(authToken, { ...authUser, firma_url: res.data.firma_url ?? null })
+      }
       cerrarDialog()
       toast.success("Usuario actualizado")
     },
@@ -128,6 +139,7 @@ export default function Usuarios() {
 
   function abrirEditar(u: Usuario) {
     setEditando(u)
+    setFirmaPreview(null)
     reset({ full_name: u.full_name, email: u.email, password: "", role: u.role })
     setDialogOpen(true)
   }
@@ -135,6 +147,15 @@ export default function Usuarios() {
   function cerrarDialog() {
     setDialogOpen(false)
     setEditando(null)
+    setFirmaPreview(null)
+  }
+
+  function handleFirmaChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => setFirmaPreview(ev.target?.result as string)
+    reader.readAsDataURL(file)
   }
 
   function onSubmit(d: UsuarioForm) {
@@ -290,6 +311,32 @@ export default function Usuarios() {
               </select>
               {errors.role && <p className="text-xs text-destructive">{errors.role.message}</p>}
             </div>
+            {editando && (
+              <div className="space-y-2">
+                <Label>Firma digital (para PDFs)</Label>
+                <div className="flex items-center gap-3">
+                  <div className="h-16 w-40 border rounded-lg bg-muted/30 flex items-center justify-center overflow-hidden">
+                    {(firmaPreview ?? editando.firma_url) ? (
+                      <img src={firmaPreview ?? editando.firma_url!} alt="firma" className="h-full w-full object-contain p-1" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sin firma</span>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Button type="button" variant="outline" size="sm" onClick={() => firmaInputRef.current?.click()}>
+                      <Upload className="h-3.5 w-3.5 mr-1" /> Subir imagen
+                    </Button>
+                    {(firmaPreview ?? editando.firma_url) && (
+                      <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setFirmaPreview("")}>
+                        <X className="h-3.5 w-3.5 mr-1" /> Quitar firma
+                      </Button>
+                    )}
+                  </div>
+                  <input ref={firmaInputRef} type="file" accept="image/*" className="hidden" onChange={handleFirmaChange} />
+                </div>
+                <p className="text-xs text-muted-foreground">PNG transparente recomendado. Se mostrará en los certificados.</p>
+              </div>
+            )}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={cerrarDialog}>

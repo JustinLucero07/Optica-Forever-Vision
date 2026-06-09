@@ -93,7 +93,7 @@ def entrada_stock(
     if data.cantidad <= 0:
         raise HTTPException(status_code=422, detail="La cantidad debe ser positiva")
 
-    antes = prod.stock_actual
+    antes = float(prod.stock_actual)
     prod.stock_actual = antes + data.cantidad
     db.add(MovimientoInventario(
         producto_id=pid, tipo="entrada", cantidad=data.cantidad,
@@ -115,8 +115,8 @@ def ajuste_stock(
     if not prod:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
-    antes = prod.stock_actual
-    diferencia = data.cantidad_nueva - float(antes)
+    antes = float(prod.stock_actual)
+    diferencia = data.cantidad_nueva - antes
     prod.stock_actual = data.cantidad_nueva
     db.add(MovimientoInventario(
         producto_id=pid, tipo="ajuste", cantidad=diferencia,

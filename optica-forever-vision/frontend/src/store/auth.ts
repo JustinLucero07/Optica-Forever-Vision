@@ -7,6 +7,7 @@ export interface AuthUser {
   email: string
   full_name: string
   role: Role
+  firma_url?: string | null
 }
 
 interface AuthState {
