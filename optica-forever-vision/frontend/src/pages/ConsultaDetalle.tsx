@@ -130,9 +130,10 @@ export default function ConsultaDetalle() {
   const navigate = useNavigate()
   const rol = useAuthStore((s) => s.user?.role)
 
-  const { data: c, isLoading } = useQuery({
+  const { data: c, isLoading, isError } = useQuery({
     queryKey: ["consulta", id],
     queryFn: () => api.get(`/consultas/${id}`).then(r => r.data),
+    retry: false,
   })
 
   const { data: paciente } = useQuery({
@@ -148,6 +149,13 @@ export default function ConsultaDetalle() {
   })
 
   if (isLoading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Cargando…</div>
+  if (isError) return (
+    <div className="p-6 space-y-2">
+      <p className="text-destructive font-semibold">Error al cargar la consulta</p>
+      <p className="text-sm text-muted-foreground">Es posible que la migración de base de datos pendiente no se haya ejecutado.</p>
+      <code className="block text-xs bg-muted px-3 py-2 rounded mt-1">sudo docker exec optica-forever-vision-backend-1 alembic upgrade head</code>
+    </div>
+  )
   if (!c) return <div className="p-6 text-destructive">Consulta no encontrada</div>
 
   const recLC = c.recetas?.find((r: { tipo: string }) => r.tipo === "lente_convencional")

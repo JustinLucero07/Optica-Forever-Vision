@@ -33,6 +33,9 @@ type FormData = {
   cl_od_marca: string; cl_od_bc: string; cl_od_diam: string; cl_od_esf: string; cl_od_cil: string; cl_od_eje: string
   cl_oi_marca: string; cl_oi_bc: string; cl_oi_diam: string; cl_oi_esf: string; cl_oi_cil: string; cl_oi_eje: string
   obs_cl: string
+  // Queratometría
+  k_od_1: string; k_od_2: string; k_od_eje: string
+  k_oi_1: string; k_oi_2: string; k_oi_eje: string
 }
 
 function n(v: string) { return v === "" ? null : Number(v) }
@@ -66,6 +69,8 @@ function buildPayload(d: FormData) {
       oi_marca: s(d.cl_oi_marca), oi_bc: n(d.cl_oi_bc), oi_diam: n(d.cl_oi_diam), oi_esf: n(d.cl_oi_esf), oi_cil: n(d.cl_oi_cil), oi_eje: n(d.cl_oi_eje),
       observaciones: s(d.obs_cl),
     } : null,
+    k_od_1: n(d.k_od_1), k_od_2: n(d.k_od_2), k_od_eje: n(d.k_od_eje),
+    k_oi_1: n(d.k_oi_1), k_oi_2: n(d.k_oi_2), k_oi_eje: n(d.k_oi_eje),
   }
 }
 
@@ -136,6 +141,8 @@ export default function ConsultaForm() {
         cl_od_marca: recCL?.cl_od_marca ?? "", cl_od_bc: recCL?.cl_od_bc ?? "", cl_od_diam: recCL?.cl_od_diam ?? "", cl_od_esf: recCL?.cl_od_esf ?? "", cl_od_cil: recCL?.cl_od_cil ?? "", cl_od_eje: recCL?.cl_od_eje ?? "",
         cl_oi_marca: recCL?.cl_oi_marca ?? "", cl_oi_bc: recCL?.cl_oi_bc ?? "", cl_oi_diam: recCL?.cl_oi_diam ?? "", cl_oi_esf: recCL?.cl_oi_esf ?? "", cl_oi_cil: recCL?.cl_oi_cil ?? "", cl_oi_eje: recCL?.cl_oi_eje ?? "",
         obs_cl: recCL?.observaciones ?? "",
+        k_od_1: consulta.k_od_1 ?? "", k_od_2: consulta.k_od_2 ?? "", k_od_eje: consulta.k_od_eje ?? "",
+        k_oi_1: consulta.k_oi_1 ?? "", k_oi_2: consulta.k_oi_2 ?? "", k_oi_eje: consulta.k_oi_eje ?? "",
       })
     }
   }, [consulta, reset])
@@ -248,7 +255,7 @@ export default function ConsultaForm() {
 
           {/* 3 - Exploración */}
           {seccion === 3 && (
-            <div className="space-y-4 max-w-2xl">
+            <div className="space-y-6 max-w-2xl">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label>PIO OD (mmHg)</Label>
@@ -273,6 +280,23 @@ export default function ConsultaForm() {
                 <div className="space-y-1">
                   <Label>Estereopsis</Label>
                   <Input placeholder="400 seg/arc…" {...register("estereopsis")} />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <h3 className="font-semibold text-sm border-t pt-4">Queratometría</h3>
+                <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-2 items-center text-sm">
+                  <div />
+                  {["K1 (D)", "K2 (D)", "Eje (°)"].map(h => (
+                    <div key={h} className="text-center text-xs font-medium text-muted-foreground">{h}</div>
+                  ))}
+                  {["od", "oi"].map(eye => (
+                    <>
+                      <div key={`${eye}-k`} className="font-semibold text-xs">{eye.toUpperCase()}</div>
+                      {["1", "2", "eje"].map(f => (
+                        <Input key={f} className="h-8 text-center text-xs" placeholder={f === "eje" ? "°" : "0.00"} {...register(`k_${eye}_${f}` as any)} />
+                      ))}
+                    </>
+                  ))}
                 </div>
               </div>
             </div>

@@ -57,6 +57,12 @@ class ConsultaCreate(BaseModel):
     rx_oi_eje: int | None = None
     rx_oi_add: float | None = None
     rx_oi_av: str | None = None
+    k_od_1: float | None = None
+    k_od_2: float | None = None
+    k_od_eje: int | None = None
+    k_oi_1: float | None = None
+    k_oi_2: float | None = None
+    k_oi_eje: int | None = None
     pio_od: float | None = None
     pio_oi: float | None = None
     cover_test_vl: str | None = None
@@ -137,6 +143,12 @@ class ConsultaOut(BaseModel):
     rx_oi_eje: int | None
     rx_oi_add: float | None
     rx_oi_av: str | None
+    k_od_1: float | None
+    k_od_2: float | None
+    k_od_eje: int | None
+    k_oi_1: float | None
+    k_oi_2: float | None
+    k_oi_eje: int | None
     pio_od: float | None
     pio_oi: float | None
     cover_test_vl: str | None
@@ -163,6 +175,15 @@ class ConsultaListItem(BaseModel):
     fecha: date
     motivo_consulta: str | None
     diagnostico: str | None
+    rx_od_esf: float | None = None
+    rx_od_cil: float | None = None
+    rx_od_eje: int | None = None
+    rx_od_add: float | None = None
+    rx_oi_esf: float | None = None
+    rx_oi_cil: float | None = None
+    rx_oi_eje: int | None = None
+    rx_oi_add: float | None = None
+    recetas: list[RecetaOut] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}

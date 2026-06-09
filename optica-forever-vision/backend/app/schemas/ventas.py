@@ -9,6 +9,7 @@ class VentaItemIn(BaseModel):
     cantidad: float
     precio_unitario: float
     descuento_pct: float = 0
+    garantia_meses: int | None = None
 
     @model_validator(mode="after")
     def calcular_subtotal(self):
@@ -36,6 +37,8 @@ class VentaItemOut(BaseModel):
     precio_unitario: float
     descuento_pct: float
     subtotal: float
+    garantia_meses: int | None = None
+    garantia_vence: date | None = None
     model_config = {"from_attributes": True}
 
 

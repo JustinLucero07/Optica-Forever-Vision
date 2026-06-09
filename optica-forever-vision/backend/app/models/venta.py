@@ -51,5 +51,7 @@ class VentaItem(Base):
     precio_unitario: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     descuento_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    garantia_meses: Mapped[int | None] = mapped_column(nullable=True)
+    garantia_vence: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     venta: Mapped["Venta"] = relationship("Venta", back_populates="items")

@@ -23,6 +23,7 @@ import Configuracion from "@/pages/Configuracion"
 import SRIImport from "@/pages/SRIImport"
 import Proveedores from "@/pages/Proveedores"
 import Presupuestos from "@/pages/Presupuestos"
+import CajaDiariaPage from "@/pages/CajaDiaria"
 import { useAuthStore } from "@/store/auth"
 
 function RequireAuth() {
@@ -71,6 +72,7 @@ export const router = createBrowserRouter([
           { path: "ordenes", element: <Ordenes /> },
 
           // Cobros / Tesorería / Créditos
+          { path: "caja", element: <CajaDiariaPage /> },
           { path: "cobros", element: <Cobros /> },
           { path: "creditos", element: <Creditos /> },
           { path: "cxc", element: <CuentasPorCobrar /> },

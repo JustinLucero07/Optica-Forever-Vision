@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { NavLink, Outlet, useNavigate } from "react-router-dom"
 import {
+  Banknote,
   Box,
   Calendar,
   ClipboardList,
@@ -28,6 +29,7 @@ import { useAuthStore } from "@/store/auth"
 import SessionExpiredModal from "@/components/SessionExpiredModal"
 import OnboardingTour from "@/components/OnboardingTour"
 import GlobalSearch from "@/components/GlobalSearch"
+import Notifications from "@/components/Notifications"
 import ThemeToggle from "@/components/ThemeToggle"
 import { useBrandStore } from "@/store/brand"
 import FloatingFAB from "@/components/FloatingFAB"
@@ -40,6 +42,7 @@ const NAV = [
   { to: "/ventas", label: "Ventas", icon: ShoppingBag },
   { to: "/inventario", label: "Inventario", icon: Box },
   { to: "/ordenes", label: "Órdenes Lab", icon: ClipboardList },
+  { to: "/caja", label: "Caja Diaria", icon: Banknote },
   { to: "/cobros", label: "Cobros / CxC", icon: Wallet },
   { to: "/creditos", label: "Créditos", icon: CreditCard },
   { to: "/cxc", label: "Cartera CxC", icon: Landmark },
@@ -170,6 +173,7 @@ export default function Layout() {
             )}
           </div>
           <div className="flex items-center gap-1">
+            <Notifications />
             <ThemeToggle />
             <button
               className="md:hidden p-1.5 rounded-lg hover:bg-accent transition-colors"
@@ -250,6 +254,7 @@ export default function Layout() {
             )}
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <Notifications />
             <ThemeToggle />
             <GlobalSearch />
           </div>

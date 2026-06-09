@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import PacienteCombobox from "@/components/PacienteCombobox"
 
 interface Producto { id: number; nombre: string; codigo: string | null; precio_venta: number; stock_actual: number; unidad: string }
-interface CartItem { producto_id: number | null; descripcion: string; cantidad: number; precio_unitario: number; descuento_pct: number }
+interface CartItem { producto_id: number | null; descripcion: string; cantidad: number; precio_unitario: number; descuento_pct: number; garantia_meses: number | null }
 
 function calcSubtotal(it: CartItem) {
   return it.cantidad * it.precio_unitario * (1 - it.descuento_pct / 100)
@@ -31,6 +31,7 @@ export default function VentaNueva() {
         cantidad: Number(it.cantidad),
         precio_unitario: Number(it.precio_unitario),
         descuento_pct: Number(it.descuento),
+        garantia_meses: null,
       }))
     }
     return []
@@ -63,6 +64,7 @@ export default function VentaNueva() {
         cantidad: it.cantidad,
         precio_unitario: it.precio_unitario,
         descuento_pct: it.descuento_pct,
+        garantia_meses: it.garantia_meses || null,
       })),
     }),
     onSuccess: (res) => {
@@ -77,13 +79,13 @@ export default function VentaNueva() {
     if (existe >= 0) {
       setCart(prev => prev.map((it, i) => i === existe ? { ...it, cantidad: it.cantidad + 1 } : it))
     } else {
-      setCart(prev => [...prev, { producto_id: p.id, descripcion: p.nombre, cantidad: 1, precio_unitario: p.precio_venta, descuento_pct: 0 }])
+      setCart(prev => [...prev, { producto_id: p.id, descripcion: p.nombre, cantidad: 1, precio_unitario: p.precio_venta, descuento_pct: 0, garantia_meses: null }])
     }
     setBusqueda("")
   }
 
   function agregarManual() {
-    setCart(prev => [...prev, { producto_id: null, descripcion: "", cantidad: 1, precio_unitario: 0, descuento_pct: 0 }])
+    setCart(prev => [...prev, { producto_id: null, descripcion: "", cantidad: 1, precio_unitario: 0, descuento_pct: 0, garantia_meses: null }])
   }
 
   function quitarItem(i: number) { setCart(prev => prev.filter((_, idx) => idx !== i)) }
@@ -168,7 +170,7 @@ export default function VentaNueva() {
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-5 gap-2">
                   <div className="space-y-0.5">
                     <p className="text-xs text-muted-foreground">Cantidad</p>
                     <Input type="number" min="1" step="1" value={it.cantidad} onChange={e => actualizarItem(i, "cantidad", Number(e.target.value))} className="h-8 text-sm" />
@@ -180,6 +182,10 @@ export default function VentaNueva() {
                   <div className="space-y-0.5">
                     <p className="text-xs text-muted-foreground">Desc. %</p>
                     <Input type="number" min="0" max="100" step="1" value={it.descuento_pct} onChange={e => actualizarItem(i, "descuento_pct", Number(e.target.value))} className="h-8 text-sm" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">Garantía (meses)</p>
+                    <Input type="number" min="0" step="1" placeholder="—" value={it.garantia_meses ?? ""} onChange={e => actualizarItem(i, "garantia_meses", e.target.value ? Number(e.target.value) : null)} className="h-8 text-sm" />
                   </div>
                   <div className="space-y-0.5">
                     <p className="text-xs text-muted-foreground">Subtotal</p>

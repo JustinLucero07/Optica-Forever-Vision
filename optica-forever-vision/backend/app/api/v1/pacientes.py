@@ -219,6 +219,38 @@ def eliminar_nota(
     db.commit()
 
 
+# ── Garantías ──────────────────────────────────────────────────────────────────
+
+@router.get("/{pid}/garantias")
+def garantias_paciente(
+    pid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from app.models.venta import Venta, VentaItem
+    p = db.get(Paciente, pid)
+    if not p:
+        raise HTTPException(404, detail="Paciente no encontrado")
+    rows = db.execute(
+        select(VentaItem, Venta.numero)
+        .join(Venta, VentaItem.venta_id == Venta.id)
+        .where(Venta.paciente_id == pid, VentaItem.garantia_vence.isnot(None))
+        .order_by(VentaItem.garantia_vence)
+    ).all()
+    today = date.today()
+    return [
+        {
+            "id": item.id,
+            "descripcion": item.descripcion,
+            "garantia_meses": item.garantia_meses,
+            "garantia_vence": item.garantia_vence.isoformat() if item.garantia_vence else None,
+            "venta_numero": venta_num,
+            "vencida": item.garantia_vence < today if item.garantia_vence else False,
+        }
+        for item, venta_num in rows
+    ]
+
+
 # ── Estado de cuenta ───────────────────────────────────────────────────────────
 
 @router.get("/{pid}/estado-cuenta")

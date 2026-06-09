@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { Search, Users, ShoppingBag, ClipboardList, CreditCard, Box, Loader2, X } from "lucide-react"
@@ -92,9 +93,93 @@ export default function GlobalSearch() {
     setOpen(false)
   }
 
+  const modal = open && createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[10vh] px-4"
+      onClick={() => setOpen(false)}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+      {/* Modal box */}
+      <div
+        className="relative z-10 w-full max-w-lg bg-card rounded-xl shadow-2xl border border-border overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Input */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <Search className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Buscar paciente, venta, orden, crédito, producto…"
+            className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
+          />
+          {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {q && !isFetching && (
+            <button onClick={() => setQ("")} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono bg-muted border border-border rounded opacity-60">
+            Esc
+          </kbd>
+        </div>
+
+        {/* Results */}
+        <div className="max-h-[60vh] overflow-y-auto">
+          {q.length < 2 && (
+            <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+              Escribe al menos 2 caracteres para buscar
+            </div>
+          )}
+          {q.length >= 2 && !isFetching && todos.length === 0 && (
+            <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+              Sin resultados para "<strong className="text-foreground">{q}</strong>"
+            </div>
+          )}
+          {todos.length > 0 && (
+            <ul className="py-2">
+              {todos.map((r, i) => {
+                const Icon = tipoIcon[r.tipo] ?? Search
+                return (
+                  <li key={i}>
+                    <button
+                      onClick={() => handleSelect(r)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted transition-colors text-left"
+                    >
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-md flex-shrink-0 ${tipoBg[r.tipo] ?? "bg-muted text-muted-foreground"}`}>
+                        <Icon className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate text-foreground">{r.label}</p>
+                        {r.sub && <p className="text-xs text-muted-foreground truncate">{r.sub}</p>}
+                      </div>
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${tipoBg[r.tipo] ?? "bg-muted text-muted-foreground"}`}>
+                        {tipoLabel[r.tipo] ?? r.tipo}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-border px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground bg-muted/30">
+          <span>Esc cerrar</span>
+          <span>↵ seleccionar</span>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+
   return (
     <>
-      {/* Trigger button in sidebar/header */}
+      {/* Trigger button */}
       <button
         onClick={() => setOpen(true)}
         className="flex items-center gap-2 w-full px-3 py-2 text-sm text-muted-foreground
@@ -109,88 +194,7 @@ export default function GlobalSearch() {
           Ctrl K
         </kbd>
       </button>
-
-      {/* Modal overlay */}
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4"
-          onClick={() => setOpen(false)}
-        >
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-
-          <div
-            className="relative w-full max-w-lg bg-background rounded-xl shadow-2xl border overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Input */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b">
-              <Search className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              <input
-                ref={inputRef}
-                value={q}
-                onChange={e => setQ(e.target.value)}
-                placeholder="Buscar paciente, venta, orden, crédito, producto…"
-                className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
-              />
-              {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-              {q && !isFetching && (
-                <button onClick={() => setQ("")} className="text-muted-foreground hover:text-foreground">
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Results */}
-            <div className="max-h-[60vh] overflow-y-auto">
-              {q.length < 2 && (
-                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Escribe al menos 2 caracteres para buscar
-                </div>
-              )}
-
-              {q.length >= 2 && !isFetching && todos.length === 0 && (
-                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  No se encontraron resultados para "<strong>{q}</strong>"
-                </div>
-              )}
-
-              {todos.length > 0 && (
-                <ul className="py-2">
-                  {todos.map((r, i) => {
-                    const Icon = tipoIcon[r.tipo] ?? Search
-                    return (
-                      <li key={i}>
-                        <button
-                          onClick={() => handleSelect(r)}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors text-left"
-                        >
-                          <span className={`inline-flex items-center justify-center w-7 h-7 rounded-md flex-shrink-0 ${tipoBg[r.tipo] ?? "bg-gray-100 text-gray-600"}`}>
-                            <Icon className="h-3.5 w-3.5" />
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{r.label}</p>
-                            {r.sub && <p className="text-xs text-muted-foreground truncate">{r.sub}</p>}
-                          </div>
-                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${tipoBg[r.tipo] ?? "bg-gray-100 text-gray-600"}`}>
-                            {tipoLabel[r.tipo] ?? r.tipo}
-                          </span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="border-t px-4 py-2 flex items-center gap-4 text-xs text-muted-foreground">
-              <span>↑↓ navegar</span>
-              <span>Enter seleccionar</span>
-              <span>Esc cerrar</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {modal}
     </>
   )
 }

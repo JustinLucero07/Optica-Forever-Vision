@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Search, Pencil, Package, Loader2, AlertTriangle, ArrowDown } from "lucide-react"
+import { Plus, Search, Pencil, Package, Loader2, AlertTriangle, ArrowDown, Tag, Trash2 } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,7 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/
 import { useAuthStore } from "@/store/auth"
 import { Paginador } from "@/components/ui/Paginador"
 
-interface Categoria { id: number; nombre: string }
+interface Categoria { id: number; nombre: string; descripcion?: string | null }
 interface Producto {
   id: number; codigo: string | null; nombre: string; descripcion: string | null
   categoria: Categoria | null; precio_costo: number; precio_venta: number
@@ -33,6 +33,9 @@ export default function Inventario() {
   const [perPage, setPerPage] = useState(20)
   const [dialogProd, setDialogProd] = useState(false)
   const [dialogEntrada, setDialogEntrada] = useState(false)
+  const [dialogCats, setDialogCats] = useState(false)
+  const [editandoCat, setEditandoCat] = useState<Categoria | null>(null)
+  const [nombreCat, setNombreCat] = useState("")
   const [editando, setEditando] = useState<Producto | null>(null)
   const [productoEntrada, setProductoEntrada] = useState<Producto | null>(null)
   const qc = useQueryClient()
@@ -69,6 +72,31 @@ export default function Inventario() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["productos"] }); cerrarEntrada(); toast.success("Stock actualizado") },
     onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
   })
+
+  const crearCatMut = useMutation({
+    mutationFn: (nombre: string) => api.post("/categorias", { nombre }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["categorias"] }); setNombreCat(""); toast.success("Categoría creada") },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+  })
+
+  const editarCatMut = useMutation({
+    mutationFn: ({ id, nombre }: { id: number; nombre: string }) => api.put(`/categorias/${id}`, { nombre }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["categorias"] }); setEditandoCat(null); setNombreCat(""); toast.success("Categoría actualizada") },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+  })
+
+  const eliminarCatMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/categorias/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["categorias"] }); qc.invalidateQueries({ queryKey: ["productos"] }); toast.success("Categoría eliminada") },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+  })
+
+  function guardarCat() {
+    const n = nombreCat.trim()
+    if (!n) return
+    if (editandoCat) editarCatMut.mutate({ id: editandoCat.id, nombre: n })
+    else crearCatMut.mutate(n)
+  }
 
   function toPayloadProd(d: ProdForm) {
     return {
@@ -122,7 +150,12 @@ export default function Inventario() {
           )}
         </div>
         {(rol === "admin" || rol === "vendedor") && (
-          <Button onClick={abrirNuevo}><Plus className="h-4 w-4 mr-2" /> Nuevo Producto</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => { setDialogCats(true); setEditandoCat(null); setNombreCat("") }}>
+              <Tag className="h-4 w-4 mr-2" /> Categorías
+            </Button>
+            <Button onClick={abrirNuevo}><Plus className="h-4 w-4 mr-2" /> Nuevo Producto</Button>
+          </div>
         )}
       </div>
 
@@ -261,6 +294,64 @@ export default function Inventario() {
             </Button>
           </DialogFooter>
         </form>
+      </Dialog>
+
+      {/* Dialog Categorías */}
+      <Dialog open={dialogCats} onClose={() => { setDialogCats(false); setEditandoCat(null); setNombreCat("") }} className="max-w-md">
+        <DialogHeader onClose={() => { setDialogCats(false); setEditandoCat(null); setNombreCat("") }}>
+          Gestionar Categorías
+        </DialogHeader>
+        <DialogBody className="space-y-4">
+          {/* Formulario crear/editar */}
+          <div className="flex gap-2">
+            <Input
+              value={nombreCat}
+              onChange={e => setNombreCat(e.target.value)}
+              placeholder="Nombre de categoría…"
+              onKeyDown={e => e.key === "Enter" && (e.preventDefault(), guardarCat())}
+            />
+            <Button onClick={guardarCat} disabled={crearCatMut.isPending || editarCatMut.isPending || !nombreCat.trim()} className="shrink-0">
+              {(crearCatMut.isPending || editarCatMut.isPending) ? <Loader2 className="h-4 w-4 animate-spin" /> : editandoCat ? "Guardar" : <><Plus className="h-4 w-4 mr-1" />Agregar</>}
+            </Button>
+            {editandoCat && (
+              <Button variant="outline" onClick={() => { setEditandoCat(null); setNombreCat("") }} className="shrink-0">
+                Cancelar
+              </Button>
+            )}
+          </div>
+          {/* Lista */}
+          {categorias.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No hay categorías aún</p>
+          ) : (
+            <ul className="divide-y divide-border rounded-lg border overflow-hidden">
+              {categorias.map(c => (
+                <li key={c.id} className={`flex items-center justify-between px-3 py-2.5 text-sm ${editandoCat?.id === c.id ? "bg-muted" : "bg-card"}`}>
+                  <span className="font-medium">{c.nombre}</span>
+                  <div className="flex gap-1">
+                    <button
+                      className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => { setEditandoCat(c); setNombreCat(c.nombre) }}
+                      title="Editar"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      onClick={() => { if (confirm(`¿Eliminar categoría "${c.nombre}"?`)) eliminarCatMut.mutate(c.id) }}
+                      title="Eliminar"
+                      disabled={eliminarCatMut.isPending}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setDialogCats(false); setEditandoCat(null); setNombreCat("") }}>Cerrar</Button>
+        </DialogFooter>
       </Dialog>
 
       {/* Dialog Entrada de stock */}

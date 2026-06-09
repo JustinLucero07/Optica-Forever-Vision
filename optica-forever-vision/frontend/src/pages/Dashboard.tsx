@@ -288,6 +288,12 @@ export default function Dashboard() {
     refetchInterval: 60_000,
   })
 
+  const { data: cajaHoy } = useQuery<{ ingresos: number; egresos: number; neto: number }>({
+    queryKey: ["stats-caja-hoy"],
+    queryFn: () => api.get("/stats/caja-hoy").then(r => r.data),
+    refetchInterval: 60_000,
+  })
+
   const { data: analytics } = useQuery<any>({
     queryKey: ["dashboard-analytics"],
     queryFn: () => api.get("/reportes/analytics").then(r => r.data),
@@ -353,11 +359,24 @@ export default function Dashboard() {
       {kpis && (
         <>
           {/* ── Strip de hoy ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <QuickStat label="Ventas hoy"     value={kpis.ventas_hoy}  isCurrency color={primaryHex} />
-            <QuickStat label="Cobros hoy"     value={kpis.cobros_hoy}  isCurrency color="#10b981" />
-            <QuickStat label="Turnos hoy"     value={kpis.turnos_hoy}             color="#f59e0b" />
-            <QuickStat label="Órdenes activas" value={kpis.ordenes_activas}        color="#8b5cf6" />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <QuickStat label="Ventas hoy"      value={kpis.ventas_hoy}   isCurrency color={primaryHex} />
+            <QuickStat label="Cobros hoy"      value={kpis.cobros_hoy}   isCurrency color="#10b981" />
+            <QuickStat label="Turnos hoy"      value={kpis.turnos_hoy}              color="#f59e0b" />
+            <QuickStat label="Órdenes activas" value={kpis.ordenes_activas}         color="#8b5cf6" />
+            {cajaHoy && (
+              <Link to="/caja" className="block">
+                <div className="glass rounded-2xl p-4 flex flex-col gap-1 hover:scale-[1.02] transition-transform cursor-pointer">
+                  <p className="text-xs text-muted-foreground font-medium">Neto del día</p>
+                  <p className={`text-xl font-black tabular-nums ${cajaHoy.neto >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                    {cajaHoy.neto >= 0 ? "+" : ""}${Math.abs(cajaHoy.neto).toFixed(2)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    ↑${cajaHoy.ingresos.toFixed(2)} · ↓${cajaHoy.egresos.toFixed(2)}
+                  </p>
+                </div>
+              </Link>
+            )}
           </div>
 
           {/* ── KPIs principales del mes ── */}

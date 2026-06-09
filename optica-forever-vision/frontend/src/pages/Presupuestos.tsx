@@ -233,6 +233,10 @@ export default function Presupuestos() {
     navigate("/ventas/nueva", { state: { presupuesto: p } })
   }
 
+  function convertirAOrden(p: Presupuesto) {
+    navigate("/ordenes", { state: { fromPresupuesto: { paciente_id: p.paciente_id, notas: `Basado en presupuesto ${p.numero}` } } })
+  }
+
   const presupuestosFiltrados = presupuestos.filter(p => {
     if (filtroEstado && p.estado !== filtroEstado) return false
     if (busqueda) {
@@ -431,10 +435,16 @@ export default function Presupuestos() {
                     </Button>
                   ))}
                   {p.estado === "aceptado" && (
-                    <Button size="sm" variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() => convertirAVenta(p)}>
-                      <ShoppingCart className="h-3.5 w-3.5 mr-1" /> Convertir a venta
-                    </Button>
+                    <>
+                      <Button size="sm" variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => convertirAVenta(p)}>
+                        <ShoppingCart className="h-3.5 w-3.5 mr-1" /> Convertir a venta
+                      </Button>
+                      <Button size="sm" variant="outline" className="border-violet-300 text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+                        onClick={() => convertirAOrden(p)}>
+                        <FileText className="h-3.5 w-3.5 mr-1" /> Crear orden lab
+                      </Button>
+                    </>
                   )}
                   <Button size="sm" variant="outline" onClick={() => handlePrint(p)}>
                     <Printer className="h-3.5 w-3.5 mr-1" /> Imprimir / PDF

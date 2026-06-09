@@ -121,6 +121,7 @@ def listar_consultas(
     stmt = (
         select(Consulta)
         .where(Consulta.paciente_id == pid)
+        .options(selectinload(Consulta.recetas))
         .order_by(Consulta.fecha.desc())
     )
     return db.execute(stmt).scalars().all()

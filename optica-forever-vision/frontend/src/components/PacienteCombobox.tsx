@@ -101,7 +101,10 @@ export default function PacienteCombobox({ value, onChange, placeholder = "Busca
       </div>
 
       {open && query.length >= 1 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-64 overflow-y-auto">
+        <div
+          className="absolute z-50 top-full left-0 right-0 mt-1 border border-border rounded-md shadow-xl max-h-64 overflow-y-auto"
+          style={{ backgroundColor: "hsl(var(--card))" }}
+        >
           {resultados.length === 0 && !isFetching && (
             <p className="text-sm text-muted-foreground text-center py-4">Sin resultados</p>
           )}

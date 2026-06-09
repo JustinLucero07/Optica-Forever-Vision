@@ -81,6 +81,10 @@ def crear_venta(
     db.flush()
 
     for it in data.items:
+        garantia_vence = None
+        if it.garantia_meses:
+            from dateutil.relativedelta import relativedelta
+            garantia_vence = data.fecha + relativedelta(months=it.garantia_meses)
         item = VentaItem(
             venta_id=venta.id,
             producto_id=it.producto_id,
@@ -89,6 +93,8 @@ def crear_venta(
             precio_unitario=it.precio_unitario,
             descuento_pct=it.descuento_pct,
             subtotal=it.subtotal,
+            garantia_meses=it.garantia_meses,
+            garantia_vence=garantia_vence,
         )
         db.add(item)
 

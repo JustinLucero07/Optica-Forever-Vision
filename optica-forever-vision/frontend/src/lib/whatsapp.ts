@@ -55,25 +55,76 @@ async function enviarTemplate(
 
 // ── Message builders (wa.me) ───────────────────────────────────────────────────
 
+const FIRMA = "Optica Forever Vision\nAv. 24 de mayo y Puyo, Cuenca."
+
 export function msgTurno(nombre: string, fecha: string, hora: string, motivo?: string) {
-  const motivoLine = motivo ? `\n📋 Motivo: ${motivo}` : ""
-  return `Hola ${nombre} 👋, le recordamos su *cita* en Óptica Forever Vision:\n\n📅 Fecha: *${fecha}*\n🕐 Hora: *${hora}*${motivoLine}\n\nPor favor, preséntese 5 minutos antes.\n\nAv. 24 de mayo y Puyo, Cuenca.`
+  const lineas = [
+    `Hola ${nombre} 👋`,
+    `Le recordamos su cita en Optica Forever Vision.`,
+    ``,
+    `📅 Fecha: ${fecha}`,
+    `🕐 Hora: ${hora}`,
+    motivo ? `📋 Motivo: ${motivo}` : "",
+    ``,
+    `Por favor presentese 5 minutos antes.`,
+    ``,
+    FIRMA,
+  ].filter(l => l !== "")
+  return lineas.join("\n")
 }
 
 export function msgOrdenLista(nombre: string, numero: string) {
-  return `Hola ${nombre} 👓, ¡sus lentes están listos!\n\nSu orden *${numero}* ya puede ser retirada en nuestra óptica.\n\n📍 Av. 24 de mayo y Puyo, Cuenca\n⏰ Lun–Vie 9:00–18:00 / Sáb 9:00–14:00\n\n¡Le esperamos! 😊`
+  const lineas = [
+    `Hola ${nombre} 👓`,
+    `Sus lentes estan listos para retirar.`,
+    ``,
+    `📋 Orden: ${numero}`,
+    ``,
+    `📍 Av. 24 de mayo y Puyo, Cuenca`,
+    `🕐 Lun–Vie 9:00–18:00 / Sab 9:00–14:00`,
+    ``,
+    `Le esperamos 😊`,
+  ]
+  return lineas.join("\n")
 }
 
 export function msgCumpleanios(nombre: string) {
-  return `🎂 ¡Feliz cumpleaños, ${nombre}!\n\nEn Óptica Forever Vision le deseamos un maravilloso día.\n\nComo regalo, venga a visitarnos y consulte nuestras promociones especiales para usted.\n\nAv. 24 de mayo y Puyo, Cuenca. ¡Le esperamos!`
+  const lineas = [
+    `🎂 Feliz cumpleanos, ${nombre}!`,
+    ``,
+    `En Optica Forever Vision le deseamos un maravilloso dia.`,
+    ``,
+    `Venga a visitarnos y consulte nuestras promociones especiales.`,
+    ``,
+    FIRMA,
+  ]
+  return lineas.join("\n")
 }
 
 export function msgControlVisual(nombre: string, fechaControl: string) {
-  return `Hola ${nombre} 👋, le recordamos que tiene su próximo *control visual* programado para el *${fechaControl}*.\n\n👓 Por favor, comuníquese con nosotros para confirmar o agendar su cita.\n\nÓptica Forever Vision — Av. 24 de mayo y Puyo, Cuenca.`
+  const lineas = [
+    `Hola ${nombre} 👋`,
+    `Le recordamos que tiene su proximo control visual programado para el ${fechaControl}.`,
+    ``,
+    `👓 Por favor comuniquese con nosotros para confirmar o agendar su cita.`,
+    ``,
+    FIRMA,
+  ]
+  return lineas.join("\n")
 }
 
 export function msgRecordatorio(nombre: string) {
-  return `Hola ${nombre} 👋, le saludamos desde *Óptica Forever Vision*.\n\nRecuerde que es importante realizarse un control visual periódico para cuidar su salud ocular. 👁️\n\n¡Con gusto le atendemos! Av. 24 de mayo y Puyo, Cuenca.`
+  const lineas = [
+    `Hola ${nombre} 👋`,
+    `Le saludamos desde Optica Forever Vision.`,
+    ``,
+    `Recuerde que es importante realizarse un control visual periodico para cuidar su salud ocular. 👁️`,
+    ``,
+    `Con gusto le atendemos.`,
+    ``,
+    FIRMA,
+  ]
+  return lineas.join("\n")
 }
 
 export function msgCuota(
@@ -84,7 +135,20 @@ export function msgCuota(
   monto: string,
   fechaVenc: string
 ) {
-  return `Hola ${nombre} 👋, le recordamos que su cuota *${numeroCuota}/${totalCuotas}* del crédito *${numeroCred}* por *$${monto}* vence el *${fechaVenc}*.\n\nSi ya realizó el pago, puede ignorar este mensaje.\n\nÓptica Forever Vision — Av. 24 de mayo y Puyo, Cuenca.`
+  const lineas = [
+    `Hola ${nombre} 👋`,
+    `Le recordamos el vencimiento de su cuota de credito.`,
+    ``,
+    `💳 Credito: ${numeroCred}`,
+    `📌 Cuota: ${numeroCuota} de ${totalCuotas}`,
+    `💵 Monto: $${monto}`,
+    `📅 Vence: ${fechaVenc}`,
+    ``,
+    `Si ya realizo el pago, ignore este mensaje.`,
+    ``,
+    FIRMA,
+  ]
+  return lineas.join("\n")
 }
 
 export function msgAbono(
@@ -96,7 +160,20 @@ export function msgAbono(
   fecha: string,
   saldo: string
 ) {
-  return `✅ Hola ${nombre}, confirmamos su pago en Óptica Forever Vision:\n\n💳 Crédito: *${numeroCred}*\n📌 Cuota: ${numeroCuota}/${totalCuotas}\n💵 Monto abonado: *$${monto}*\n📅 Fecha: ${fecha}\n💰 Saldo pendiente: *$${saldo}*\n\nGracias por su pago. Guarde este mensaje como comprobante.\n\nÓptica Forever Vision — Av. 24 de mayo y Puyo, Cuenca.`
+  const lineas = [
+    `✅ Hola ${nombre}, confirmamos su pago en Optica Forever Vision.`,
+    ``,
+    `💳 Credito: ${numeroCred}`,
+    `📌 Cuota: ${numeroCuota} de ${totalCuotas}`,
+    `💵 Monto abonado: $${monto}`,
+    `📅 Fecha: ${fecha}`,
+    `💰 Saldo pendiente: $${saldo}`,
+    ``,
+    `Gracias por su pago. Guarde este mensaje como comprobante.`,
+    ``,
+    FIRMA,
+  ]
+  return lineas.join("\n")
 }
 
 // ── Exported senders ───────────────────────────────────────────────────────────

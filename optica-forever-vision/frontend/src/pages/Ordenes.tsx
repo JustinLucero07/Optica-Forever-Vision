@@ -1,4 +1,6 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
+import { useLocation } from "react-router-dom"
 import { Paginador } from "@/components/ui/Paginador"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -43,6 +45,23 @@ interface Orden {
 
 interface Paciente { id: number; nombres: string; apellidos: string; cedula: string; telefono: string | null }
 
+interface RecetaItem {
+  tipo: string
+  lc_od_esf: number | null; lc_od_cil: number | null; lc_od_eje: number | null; lc_od_add: number | null
+  lc_od_dnp: number | null; lc_oi_esf: number | null; lc_oi_cil: number | null; lc_oi_eje: number | null
+  lc_oi_add: number | null; lc_oi_dnp: number | null; tipo_lente: string | null; tipo_armadura: string | null
+  cl_od_esf: number | null; cl_od_cil: number | null; cl_od_eje: number | null
+  cl_oi_esf: number | null; cl_oi_cil: number | null; cl_oi_eje: number | null
+}
+interface ConsultaItem {
+  id: number; numero: string; fecha: string; diagnostico: string | null
+  rx_od_esf: number | null; rx_od_cil: number | null; rx_od_eje: number | null; rx_od_add: number | null
+  rx_oi_esf: number | null; rx_oi_cil: number | null; rx_oi_eje: number | null; rx_oi_add: number | null
+  recetas: RecetaItem[]
+}
+
+interface ProductoMin { id: number; nombre: string; precio_costo: number | null; precio_venta: number | null; stock_actual: number | null }
+
 interface RxOjo { esf: string; cil: string; eje: string; add: string; prisma: string; dnp: string }
 const EMPTY_RX_OJO: RxOjo = { esf: "", cil: "", eje: "", add: "", prisma: "", dnp: "" }
 
@@ -59,26 +78,33 @@ const EMPTY_RX: RxForm = {
 interface OrdenParte {
   _id: string
   nombre: string
+  ojos: "od" | "oi" | "ao"
+  fuente: "lab" | "stock"
   proveedor_id: string
   lab_proveedor: string
   lab_telefono: string
   fecha_entrega_est: string
   precio_lab: string
+  producto_id: string
 }
 function newParte(nombre = "Completo"): OrdenParte {
-  return { _id: Math.random().toString(36).slice(2), nombre, proveedor_id: "", lab_proveedor: "", lab_telefono: "", fecha_entrega_est: "", precio_lab: "" }
+  return {
+    _id: Math.random().toString(36).slice(2), nombre, ojos: "ao", fuente: "lab",
+    proveedor_id: "", lab_proveedor: "", lab_telefono: "",
+    fecha_entrega_est: "", precio_lab: "", producto_id: "",
+  }
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ESTADOS_ORDEN = ["pendiente", "enviado", "en_proceso", "listo", "entregado", "rechazado"]
 
 const ESTADO_BADGE_CLASS: Record<string, string> = {
-  pendiente: "bg-yellow-100 text-yellow-800",
-  enviado: "bg-blue-100 text-blue-800",
-  en_proceso: "bg-purple-100 text-purple-800",
-  listo: "bg-green-100 text-green-800",
-  entregado: "bg-gray-100 text-gray-700",
-  rechazado: "bg-red-100 text-red-700",
+  pendiente:  "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/60 dark:text-yellow-300",
+  enviado:    "bg-blue-100   text-blue-800   dark:bg-blue-900/60   dark:text-blue-300",
+  en_proceso: "bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-300",
+  listo:      "bg-green-100  text-green-800  dark:bg-green-900/60  dark:text-green-300",
+  entregado:  "bg-slate-200  text-slate-700  dark:bg-slate-700     dark:text-slate-200",
+  rechazado:  "bg-red-100    text-red-700    dark:bg-red-900/60    dark:text-red-300",
 }
 
 const TIPOS_ORDEN = [
@@ -115,9 +141,53 @@ const EMPTY_FORM = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function EstadoPill({ estado }: { estado: string }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_BADGE_CLASS[estado] ?? "bg-gray-100"}`}>
-      {estado.replace("_", " ")}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ESTADO_BADGE_CLASS[estado] ?? "bg-gray-100 text-gray-700"}`}>
+      {estado.replace(/_/g, " ")}
     </span>
+  )
+}
+
+interface EstadoDropdownPortalProps {
+  anchorEl: HTMLElement | null
+  open: boolean
+  onClose: () => void
+  estados: string[]
+  current: string
+  onSelect: (s: string) => void
+}
+function EstadoDropdownPortal({ anchorEl, open, onClose, estados, current, onSelect }: EstadoDropdownPortalProps) {
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+
+  useEffect(() => {
+    if (open && anchorEl) {
+      const r = anchorEl.getBoundingClientRect()
+      setPos({ top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX, width: r.width })
+    }
+  }, [open, anchorEl])
+
+  if (!open) return null
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[9990]" onClick={onClose} />
+      <div
+        className="absolute z-[9991] bg-white dark:bg-card border border-border rounded-xl shadow-xl py-1.5 min-w-[170px]"
+        style={{ top: pos.top, left: pos.left }}
+      >
+        {estados.map(s => (
+          <button
+            key={s}
+            className={`flex items-center gap-2.5 w-full text-left px-3 py-1.5 transition-colors rounded-lg ${s === current ? "bg-muted" : "hover:bg-muted"}`}
+            style={{ width: "calc(100% - 8px)", margin: "0 4px" }}
+            onClick={() => { onSelect(s); onClose() }}
+          >
+            <EstadoPill estado={s} />
+            {s === current && <span className="ml-auto text-primary text-xs font-bold">✓</span>}
+          </button>
+        ))}
+      </div>
+    </>,
+    document.body
   )
 }
 
@@ -384,60 +454,78 @@ function fmtPhone(tel: string) {
 function enviarAlLab(orden: Orden, pacNombre: string) {
   const tel = orden.lab_telefono
   if (!tel) return
-  // Abre el PDF de la orden para que el usuario lo adjunte manualmente en WA
-  printOrden(orden, pacNombre, useBrandStore.getState().logo)
   const rx = parsePrescripcion(orden.descripcion)
   const esUrgente = /urgente|urgencia/i.test(orden.notas ?? "")
+  const ojosMatch = /Ojo:\s*(od|oi|ao)/i.exec(orden.notas ?? "")
+  const ojos = (ojosMatch?.[1]?.toLowerCase() ?? "ao") as "od" | "oi" | "ao"
 
-  const fmtOjo = (ojo: ReturnType<typeof parsePrescripcion>["od"]) => {
-    const cols = [`ESF: ${ojo.esf || "pl"}`, `CIL: ${ojo.cil || "pl"}`, `EJE: ${ojo.eje || "—"}`]
-    if (ojo.add) cols.push(`ADD: ${ojo.add}`)
-    if (ojo.prisma) cols.push(`PRISMA: ${ojo.prisma}`)
-    if (ojo.dnp) cols.push(`DNP: ${ojo.dnp}mm`)
-    return cols.join(" | ")
+  const notasLimpias = (orden.notas ?? "")
+    .split("|").map(s => s.trim())
+    .filter(s => s && !/^(Ojo:|Fuente:|Producto:)/i.test(s))
+    .join(" | ")
+
+  const fmtOjo = (label: string, ojo: ReturnType<typeof parsePrescripcion>["od"]) => {
+    const parts = [`ESF: ${ojo.esf || "pl"}`, `CIL: ${ojo.cil || "pl"}`]
+    if (ojo.eje) parts.push(`EJE: ${ojo.eje}`)
+    if (ojo.add) parts.push(`ADD: +${ojo.add}`)
+    if (ojo.prisma) parts.push(`PRIS: ${ojo.prisma}`)
+    if (ojo.dnp) parts.push(`DNP: ${ojo.dnp}mm`)
+    return `${label}: ${parts.join("  ")}`
   }
 
+  const rxLineas: string[] = []
+  if (ojos === "od" || ojos === "ao") rxLineas.push(fmtOjo("OD", rx.od))
+  if (ojos === "oi" || ojos === "ao") rxLineas.push(fmtOjo("OI", rx.oi))
+  if (rx.dp) rxLineas.push(`DP: ${rx.dp}mm`)
+
   const lineas = [
-    esUrgente ? "🔴 *URGENTE*" : "",
-    `*ÓPTICA FOREVER VISION — Orden ${orden.numero}*`,
-    `📅 Fecha envío: ${fmtDate(orden.fecha_envio)}`,
-    orden.fecha_entrega_est ? `⏰ Entrega solicitada: ${fmtDate(orden.fecha_entrega_est)}` : "",
+    esUrgente ? "🔴 URGENTE 🔴" : "",
+    `*OPTICA FOREVER VISION*`,
+    `Orden: *${orden.numero}*  |  Fecha: ${fmtDate(orden.fecha_envio)}`,
+    orden.fecha_entrega_est ? `Entrega solicitada: *${fmtDate(orden.fecha_entrega_est)}*` : "",
     ``,
-    `👤 Paciente: *${pacNombre}*`,
-    `🔹 Tipo: ${orden.tipo}`,
-    rx.material ? `🔹 Material: ${rx.material}` : "",
-    rx.tratamiento ? `🔹 Tratamiento: ${rx.tratamiento}` : "",
-    rx.diseno ? `🔹 Diseño: ${rx.diseno}` : "",
+    `Paciente: *${pacNombre}*`,
+    `Tipo: ${orden.tipo}`,
+    rx.material ? `Material: ${rx.material}` : "",
+    rx.tratamiento ? `Tratamiento: ${rx.tratamiento}` : "",
+    rx.diseno ? `Diseño: ${rx.diseno}` : "",
     ``,
-    `*📋 Prescripción:*`,
-    `▸ OD: ${fmtOjo(rx.od)}`,
-    `▸ OI: ${fmtOjo(rx.oi)}`,
-    rx.dp ? `▸ DP: ${rx.dp}mm` : "",
+    `*PRESCRIPCION:*`,
+    ...rxLineas,
     ``,
-    rx.diagnostico ? `🔹 Diagnóstico: ${rx.diagnostico}` : "",
-    orden.notas ? `📝 Notas: ${orden.notas}` : "",
+    rx.diagnostico ? `Diagnostico: ${rx.diagnostico}` : "",
+    notasLimpias ? `Notas: ${notasLimpias}` : "",
     ``,
-    `_Confirmar recepción y tiempo de entrega, gracias._`,
-    `_Óptica Forever Vision · ${new Date().toLocaleDateString("es-EC")}_`,
+    `Confirmar recepcion y tiempo de entrega, gracias.`,
+    `Optica Forever Vision`,
   ].filter(v => v !== "")
 
   window.open(`https://wa.me/${fmtPhone(tel)}?text=${encodeURIComponent(lineas.join("\n"))}`, "_blank")
+  setTimeout(() => printOrden(orden, pacNombre, useBrandStore.getState().logo), 800)
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Ordenes() {
+  const location = useLocation()
   const [filtroEstado, setFiltroEstado] = useState("")
   const [filtroPaciente, setFiltroPaciente] = useState("")
   const [page, setPage] = useState(1)
   const [PER_PAGE, setPER_PAGE] = useState(20)
   const [openForm, setOpenForm] = useState(false)
   const [editOrden, setEditOrden] = useState<Orden | null>(null)
-  const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [form, setForm] = useState(() => {
+    const pre = (location.state as any)?.fromPresupuesto
+    if (pre) return { ...EMPTY_FORM, paciente_id: pre.paciente_id ? String(pre.paciente_id) : "", notas: pre.notas ?? "" }
+    return { ...EMPTY_FORM }
+  })
   const [rx, setRx] = useState<RxForm>({ ...EMPTY_RX, od: { ...EMPTY_RX_OJO }, oi: { ...EMPTY_RX_OJO } })
   const [partes, setPartes] = useState<OrdenParte[]>([newParte()])
   const [saving, setSaving] = useState(false)
   const [estadoDropdown, setEstadoDropdown] = useState<number | null>(null)
+  const estadoAnchorRef = useRef<HTMLElement | null>(null)
   const [potenciaCalc, setPotenciaCalc] = useState("")
+  const [consultaSelId, setConsultaSelId] = useState("")
+  const [fuenteRx, setFuenteRx] = useState<"refraccion" | "lentes" | "contacto">("refraccion")
   const qc = useQueryClient()
 
   const brandLogo = useBrandStore(s => s.logo)
@@ -474,6 +562,19 @@ export default function Ordenes() {
     queryFn: () => api.get("/proveedores", { params: { activo: true } }).then(r => r.data),
   })
 
+  const { data: consultasDePaciente = [] } = useQuery<ConsultaItem[]>({
+    queryKey: ["consultas-paciente", form.paciente_id],
+    queryFn: () => api.get(`/pacientes/${form.paciente_id}/consultas`).then(r => r.data),
+    enabled: !!form.paciente_id && openForm,
+    staleTime: 60_000,
+  })
+
+  const { data: productosMini = [] } = useQuery<ProductoMin[]>({
+    queryKey: ["productos-mini"],
+    queryFn: () => api.get("/productos", { params: { limit: 500 } }).then(r => r.data),
+    staleTime: 120_000,
+  })
+
   const estadoMut = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
       api.patch(`/ordenes/${id}/estado`, null, { params: { estado } }),
@@ -490,11 +591,62 @@ export default function Ordenes() {
     return pacientes.find(p => p.id === id)?.telefono ?? null
   }
 
+  function cargarDesdeConsulta(id: string, fuente?: typeof fuenteRx) {
+    setConsultaSelId(id)
+    const c = consultasDePaciente.find(c => c.id === Number(id))
+    if (!c) return
+    const src = fuente ?? fuenteRx
+    const fmtN = (v: number | null | undefined) => v != null ? String(v) : ""
+    if (src === "refraccion") {
+      setRx(r => ({
+        ...r,
+        od: { esf: fmtN(c.rx_od_esf), cil: fmtN(c.rx_od_cil), eje: fmtN(c.rx_od_eje), add: fmtN(c.rx_od_add), prisma: "", dnp: "" },
+        oi: { esf: fmtN(c.rx_oi_esf), cil: fmtN(c.rx_oi_cil), eje: fmtN(c.rx_oi_eje), add: fmtN(c.rx_oi_add), prisma: "", dnp: "" },
+        diagnostico: c.diagnostico ?? r.diagnostico,
+      }))
+      toast.success("Refracción cargada")
+    } else if (src === "lentes") {
+      const lc = c.recetas?.find(r => r.tipo === "lente_convencional")
+      if (!lc) { toast.warning("Esta consulta no tiene receta de lentes convencionales"); return }
+      setRx(r => ({
+        ...r,
+        od: { esf: fmtN(lc.lc_od_esf), cil: fmtN(lc.lc_od_cil), eje: fmtN(lc.lc_od_eje), add: fmtN(lc.lc_od_add), prisma: "", dnp: fmtN(lc.lc_od_dnp) },
+        oi: { esf: fmtN(lc.lc_oi_esf), cil: fmtN(lc.lc_oi_cil), eje: fmtN(lc.lc_oi_eje), add: fmtN(lc.lc_oi_add), prisma: "", dnp: fmtN(lc.lc_oi_dnp) },
+        diseno: lc.tipo_lente ?? r.diseno,
+        diagnostico: c.diagnostico ?? r.diagnostico,
+      }))
+      toast.success("Receta de lentes convencionales cargada")
+    } else if (src === "contacto") {
+      const cl = c.recetas?.find(r => r.tipo === "contactologia")
+      if (!cl) { toast.warning("Esta consulta no tiene receta de contactología"); return }
+      setRx(r => ({
+        ...r,
+        od: { esf: fmtN(cl.cl_od_esf), cil: fmtN(cl.cl_od_cil), eje: fmtN(cl.cl_od_eje), add: "", prisma: "", dnp: "" },
+        oi: { esf: fmtN(cl.cl_oi_esf), cil: fmtN(cl.cl_oi_cil), eje: fmtN(cl.cl_oi_eje), add: "", prisma: "", dnp: "" },
+        diagnostico: c.diagnostico ?? r.diagnostico,
+      }))
+      toast.success("Receta de contactología cargada")
+    }
+  }
+
+  useEffect(() => {
+    const pre = (location.state as any)?.fromPresupuesto
+    if (pre) {
+      setEditOrden(null)
+      setRx({ ...EMPTY_RX, od: { ...EMPTY_RX_OJO }, oi: { ...EMPTY_RX_OJO } })
+      setPartes([newParte()])
+      setConsultaSelId("")
+      setOpenForm(true)
+    }
+  }, [])
+
   function openNew() {
     setEditOrden(null)
     setForm({ ...EMPTY_FORM })
     setRx({ ...EMPTY_RX, od: { ...EMPTY_RX_OJO }, oi: { ...EMPTY_RX_OJO } })
     setPartes([newParte()])
+    setConsultaSelId("")
+    setFuenteRx("refraccion")
     setOpenForm(true)
   }
 
@@ -502,14 +654,18 @@ export default function Ordenes() {
     setEditOrden(o)
     setRx(descToRx(o.descripcion))
     setForm({ paciente_id: o.paciente_id.toString(), tipo: o.tipo, fecha_envio: o.fecha_envio, notas: o.notas ?? "" })
+    const ojosGuardado = /Ojo:\s*(od|oi|ao)/i.exec(o.notas ?? "")?.[1] as "od" | "oi" | "ao" | undefined
     setPartes([{
       _id: "edit",
       nombre: "Completo",
+      ojos: ojosGuardado ?? "ao",
+      fuente: o.lab_proveedor === "Stock propio" ? "stock" : "lab",
       proveedor_id: o.proveedor_id?.toString() ?? "",
       lab_proveedor: o.lab_proveedor,
       lab_telefono: o.lab_telefono ?? "",
       fecha_entrega_est: o.fecha_entrega_est ?? "",
       precio_lab: o.precio_lab?.toString() ?? "",
+      producto_id: "",
     }])
     setOpenForm(true)
   }
@@ -528,40 +684,65 @@ export default function Ordenes() {
     } : p))
   }
 
+  function handleParteProductoChange(productoId: string, parteId: string) {
+    const prod = productosMini.find(p => p.id === Number(productoId))
+    setPartes(ps => ps.map(p => p._id === parteId ? {
+      ...p,
+      producto_id: productoId,
+      precio_lab: prod?.precio_costo != null ? String(prod.precio_costo) : p.precio_lab,
+    } : p))
+  }
+
+  function handleParteFuente(fuente: "lab" | "stock", parteId: string) {
+    setPartes(ps => ps.map(p => p._id === parteId ? {
+      ...p,
+      fuente,
+      lab_proveedor: fuente === "stock" ? "Stock propio" : (p.lab_proveedor === "Stock propio" ? "" : p.lab_proveedor),
+      lab_telefono: fuente === "stock" ? "" : p.lab_telefono,
+    } : p))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.paciente_id) { toast.error("Selecciona el paciente"); return }
-    if (partes.some(p => !p.lab_proveedor)) { toast.error("Ingresa el nombre del laboratorio en cada parte"); return }
+    if (partes.some(p => p.fuente === "lab" && !p.lab_proveedor)) {
+      toast.error("Ingresa el nombre del laboratorio en cada parte de tipo 'Laboratorio'"); return
+    }
 
     const descripcion = rxToDesc(rx) || "—"
     setSaving(true)
     try {
       if (editOrden) {
         const parte = partes[0]
+        const labProv = parte.fuente === "stock" ? "Stock propio" : parte.lab_proveedor
         await api.put(`/ordenes/${editOrden.id}`, {
           paciente_id: Number(form.paciente_id),
+          consulta_id: consultaSelId ? Number(consultaSelId) : editOrden.consulta_id ?? null,
           tipo: form.tipo,
           descripcion,
           fecha_envio: form.fecha_envio,
           notas: form.notas || null,
           proveedor_id: parte.proveedor_id ? Number(parte.proveedor_id) : null,
-          lab_proveedor: parte.lab_proveedor,
-          lab_telefono: parte.lab_telefono || null,
+          lab_proveedor: labProv,
+          lab_telefono: parte.fuente === "stock" ? null : (parte.lab_telefono || null),
           fecha_entrega_est: parte.fecha_entrega_est || null,
           precio_lab: parte.precio_lab ? Number(parte.precio_lab) : null,
         })
         toast.success("Orden actualizada")
       } else {
         for (const parte of partes) {
+          const labProv = parte.fuente === "stock" ? "Stock propio" : parte.lab_proveedor
+          const prodNombre = parte.producto_id ? productosMini.find(p => p.id === Number(parte.producto_id))?.nombre : null
           await api.post("/ordenes", {
             paciente_id: Number(form.paciente_id),
+            consulta_id: consultaSelId ? Number(consultaSelId) : null,
             tipo: form.tipo,
             descripcion,
             fecha_envio: form.fecha_envio,
-            notas: form.notas || null,
+            notas: [form.notas, `Ojo: ${parte.ojos}`, parte.fuente === "stock" ? "Fuente: Stock propio" : null, prodNombre ? `Producto: ${prodNombre}` : null].filter(Boolean).join(" | ") || null,
             proveedor_id: parte.proveedor_id ? Number(parte.proveedor_id) : null,
-            lab_proveedor: parte.lab_proveedor,
-            lab_telefono: parte.lab_telefono || null,
+            lab_proveedor: labProv,
+            lab_telefono: parte.fuente === "stock" ? null : (parte.lab_telefono || null),
             fecha_entrega_est: parte.fecha_entrega_est || null,
             precio_lab: parte.precio_lab ? Number(parte.precio_lab) : null,
           })
@@ -637,28 +818,24 @@ export default function Ordenes() {
                   <td className="px-4 py-2">{fmtDate(o.fecha_envio)}</td>
                   <td className="px-4 py-2">{o.fecha_entrega_est ? fmtDate(o.fecha_entrega_est) : "—"}</td>
                   <td className="px-4 py-2">
-                    <div className="relative">
-                      <button
-                        className="flex items-center gap-1"
-                        onClick={() => setEstadoDropdown(estadoDropdown === o.id ? null : o.id)}
-                      >
-                        <EstadoPill estado={o.estado} />
-                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                      </button>
-                      {estadoDropdown === o.id && (
-                        <div className="absolute z-10 mt-1 bg-white border rounded-md shadow-lg min-w-[130px]">
-                          {ESTADOS_ORDEN.map(s => (
-                            <button
-                              key={s}
-                              className="block w-full text-left px-3 py-1.5 text-sm hover:bg-muted"
-                              onClick={() => { estadoMut.mutate({ id: o.id, estado: s }); setEstadoDropdown(null) }}
-                            >
-                              {s.replace("_", " ")}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      className="flex items-center gap-1 rounded-lg hover:bg-muted/60 px-1.5 py-1 transition-colors"
+                      onClick={e => {
+                        estadoAnchorRef.current = e.currentTarget
+                        setEstadoDropdown(estadoDropdown === o.id ? null : o.id)
+                      }}
+                    >
+                      <EstadoPill estado={o.estado} />
+                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                    <EstadoDropdownPortal
+                      anchorEl={estadoDropdown === o.id ? estadoAnchorRef.current : null}
+                      open={estadoDropdown === o.id}
+                      onClose={() => setEstadoDropdown(null)}
+                      estados={ESTADOS_ORDEN}
+                      current={o.estado}
+                      onSelect={s => estadoMut.mutate({ id: o.id, estado: s })}
+                    />
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex gap-1 flex-wrap">
@@ -746,6 +923,76 @@ export default function Ordenes() {
                 <Input type="date" value={form.fecha_envio} onChange={e => setForm(f => ({ ...f, fecha_envio: e.target.value }))} required />
               </div>
             </div>
+
+            {/* Cargar desde consulta */}
+            {!editOrden && form.paciente_id && (
+              <div className="space-y-3 rounded-lg border border-cyan-200 bg-cyan-50/60 dark:bg-cyan-950/20 dark:border-cyan-800 px-4 py-3">
+                <span className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">
+                  Cargar prescripción desde consulta
+                </span>
+                {consultasDePaciente.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Este paciente no tiene consultas registradas</p>
+                ) : (
+                  <>
+                    {/* Fuente */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-cyan-700 dark:text-cyan-300 shrink-0">Fuente:</span>
+                      <div className="flex rounded-md border border-cyan-300 overflow-hidden text-xs font-medium">
+                        {([
+                          { key: "refraccion", label: "Refracción" },
+                          { key: "lentes", label: "Lentes conv." },
+                          { key: "contacto", label: "Contactología" },
+                        ] as const).map((opt, i) => (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            className={`px-3 py-1 transition-colors ${i > 0 ? "border-l border-cyan-300" : ""} ${fuenteRx === opt.key ? "bg-cyan-600 text-white" : "bg-white/50 text-cyan-700 hover:bg-cyan-100 dark:bg-transparent dark:text-cyan-300"}`}
+                            onClick={() => {
+                              setFuenteRx(opt.key)
+                              if (consultaSelId) cargarDesdeConsulta(consultaSelId, opt.key)
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Selector de consulta */}
+                    <select
+                      className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
+                      value={consultaSelId}
+                      onChange={e => cargarDesdeConsulta(e.target.value)}
+                    >
+                      <option value="">— Seleccionar consulta —</option>
+                      {consultasDePaciente.map(c => {
+                        const lc = c.recetas?.find(r => r.tipo === "lente_convencional")
+                        const cl = c.recetas?.find(r => r.tipo === "contactologia")
+                        const preview = fuenteRx === "refraccion"
+                          ? [c.rx_od_esf != null ? `OD: ${Number(c.rx_od_esf) >= 0 ? "+" : ""}${c.rx_od_esf}` : "",
+                             c.rx_oi_esf != null ? `OI: ${Number(c.rx_oi_esf) >= 0 ? "+" : ""}${c.rx_oi_esf}` : ""].filter(Boolean).join(" / ")
+                          : fuenteRx === "lentes"
+                          ? lc ? [lc.lc_od_esf != null ? `OD: ${Number(lc.lc_od_esf) >= 0 ? "+" : ""}${lc.lc_od_esf}` : "",
+                                   lc.lc_oi_esf != null ? `OI: ${Number(lc.lc_oi_esf) >= 0 ? "+" : ""}${lc.lc_oi_esf}` : ""].filter(Boolean).join(" / ")
+                                : "sin receta LC"
+                          : cl ? [cl.cl_od_esf != null ? `OD: ${Number(cl.cl_od_esf) >= 0 ? "+" : ""}${cl.cl_od_esf}` : "",
+                                   cl.cl_oi_esf != null ? `OI: ${Number(cl.cl_oi_esf) >= 0 ? "+" : ""}${cl.cl_oi_esf}` : ""].filter(Boolean).join(" / ")
+                                : "sin receta CL"
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.numero} — {c.fecha}{preview ? ` | ${preview}` : ""}{c.diagnostico ? ` | ${c.diagnostico}` : ""}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </>
+                )}
+                {consultaSelId && (
+                  <p className="text-xs text-cyan-600 dark:text-cyan-400">
+                    ✓ Prescripción cargada. Cada parte enviará los ojos según su selector OD / OI / Ambos.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Prescripción */}
             <div className="border rounded-lg overflow-hidden">
@@ -864,61 +1111,114 @@ export default function Ordenes() {
                 )}
               </div>
               <div className="p-4 space-y-3">
-                {partes.map((parte, idx) => (
-                  <div key={parte._id} className="rounded-lg border bg-slate-50 p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-400 uppercase">
-                        {partes.length > 1 ? `Parte ${idx + 1}` : "Datos del laboratorio"}
-                      </span>
-                      {partes.length > 1 && (
-                        <button type="button" className="text-red-400 hover:text-red-600" onClick={() => setPartes(ps => ps.filter(p => p._id !== parte._id))}>
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                    <div className={`grid gap-2 ${partes.length > 1 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2 sm:grid-cols-3"}`}>
-                      {partes.length > 1 && (
-                        <div>
-                          <label className="text-xs text-slate-500">Parte del trabajo</label>
-                          <select
-                            className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5"
-                            value={parte.nombre}
-                            onChange={e => setParteField(parte._id, "nombre", e.target.value)}
-                          >
-                            {PARTES_NOMBRES.map(n => <option key={n} value={n}>{n}</option>)}
-                          </select>
-                        </div>
-                      )}
-                      <div>
-                        <label className="text-xs text-slate-500">Del sistema (opcional)</label>
+                {partes.map((parte) => (
+                  <div key={parte._id} className={`rounded-lg border p-3 space-y-2 ${parte.fuente === "stock" ? "bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800" : "bg-slate-50 dark:bg-slate-900/40"}`}>
+                    {/* Header: nombre parte + fuente toggle + eliminar */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      {partes.length > 1 ? (
                         <select
-                          className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5"
-                          value={parte.proveedor_id}
-                          onChange={e => handleParteProveedorChange(e.target.value, parte._id)}
+                          className="border rounded-md px-2 py-1 text-xs bg-background font-semibold"
+                          value={parte.nombre}
+                          onChange={e => setParteField(parte._id, "nombre", e.target.value)}
                         >
-                          <option value="">— Texto libre —</option>
-                          {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                          {PARTES_NOMBRES.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-400 uppercase">Datos del proveedor</span>
+                      )}
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        {/* Ojos selector */}
+                        <div className="flex rounded-md border overflow-hidden text-xs font-medium">
+                          {(["od", "oi", "ao"] as const).map((o, i) => (
+                            <button
+                              key={o}
+                              type="button"
+                              className={`px-2.5 py-1 transition-colors ${i > 0 ? "border-l" : ""} ${parte.ojos === o ? "bg-indigo-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                              onClick={() => setParteField(parte._id, "ojos", o)}
+                            >
+                              {o === "ao" ? "Ambos" : o.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                        {/* Fuente toggle */}
+                        <div className="flex rounded-md border overflow-hidden text-xs font-medium">
+                          <button
+                            type="button"
+                            className={`px-2.5 py-1 transition-colors ${parte.fuente === "lab" ? "bg-violet-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                            onClick={() => handleParteFuente("lab", parte._id)}
+                          >
+                            Lab
+                          </button>
+                          <button
+                            type="button"
+                            className={`px-2.5 py-1 transition-colors border-l ${parte.fuente === "stock" ? "bg-emerald-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                            onClick={() => handleParteFuente("stock", parte._id)}
+                          >
+                            Stock
+                          </button>
+                        </div>
+                        {partes.length > 1 && (
+                          <button type="button" className="text-red-400 hover:text-red-600 ml-1" onClick={() => setPartes(ps => ps.filter(p => p._id !== parte._id))}>
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
-                      <div>
-                        <label className="text-xs text-slate-500">Lab / Nombre *</label>
-                        <Input
-                          value={parte.lab_proveedor}
-                          onChange={e => setParteField(parte._id, "lab_proveedor", e.target.value)}
-                          placeholder="Nombre del laboratorio"
-                          required
-                          className="mt-0.5"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500">WhatsApp lab</label>
-                        <Input
-                          value={parte.lab_telefono}
-                          onChange={e => setParteField(parte._id, "lab_telefono", e.target.value)}
-                          placeholder="0999123456"
-                          className="mt-0.5"
-                        />
-                      </div>
+                    </div>
+
+                    {/* Producto del inventario */}
+                    <div>
+                      <label className="text-xs text-slate-500">
+                        {parte.fuente === "stock" ? "Producto del inventario *" : "Producto del inventario (opcional)"}
+                      </label>
+                      <select
+                        className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5"
+                        value={parte.producto_id}
+                        onChange={e => handleParteProductoChange(e.target.value, parte._id)}
+                      >
+                        <option value="">— Sin producto vinculado —</option>
+                        {productosMini.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.nombre} — Stock: {Math.floor(p.stock_actual ?? 0)} | Costo: ${(p.precio_costo ?? 0).toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Campos de lab (ocultos si fuente=stock) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {parte.fuente === "lab" && (
+                        <>
+                          <div>
+                            <label className="text-xs text-slate-500">Proveedor del sistema</label>
+                            <select
+                              className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5"
+                              value={parte.proveedor_id}
+                              onChange={e => handleParteProveedorChange(e.target.value, parte._id)}
+                            >
+                              <option value="">— Texto libre —</option>
+                              {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-slate-500">Lab / Nombre *</label>
+                            <Input
+                              value={parte.lab_proveedor}
+                              onChange={e => setParteField(parte._id, "lab_proveedor", e.target.value)}
+                              placeholder="Nombre del laboratorio"
+                              className="mt-0.5"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-slate-500">WhatsApp lab</label>
+                            <Input
+                              value={parte.lab_telefono}
+                              onChange={e => setParteField(parte._id, "lab_telefono", e.target.value)}
+                              placeholder="0999123456"
+                              className="mt-0.5"
+                            />
+                          </div>
+                        </>
+                      )}
                       <div>
                         <label className="text-xs text-slate-500">Entrega estimada</label>
                         <Input
@@ -929,7 +1229,9 @@ export default function Ordenes() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-slate-500">Precio lab ($)</label>
+                        <label className="text-xs text-slate-500">
+                          {parte.fuente === "stock" ? "Precio costo ($)" : "Precio lab ($)"}
+                        </label>
                         <Input
                           type="number" step="0.01" min="0"
                           value={parte.precio_lab}

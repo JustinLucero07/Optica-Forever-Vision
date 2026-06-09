@@ -47,6 +47,16 @@ class Consulta(Base):
     rx_oi_add: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     rx_oi_av: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # Queratometría OD
+    k_od_1: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    k_od_2: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    k_od_eje: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Queratometría OI
+    k_oi_1: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    k_oi_2: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    k_oi_eje: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Presión intraocular
     pio_od: Mapped[Decimal | None] = mapped_column(Numeric(4, 1), nullable=True)
     pio_oi: Mapped[Decimal | None] = mapped_column(Numeric(4, 1), nullable=True)
