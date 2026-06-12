@@ -24,7 +24,7 @@ from app.models.producto import Categoria, Producto
 from app.models.tesoreria import CuentaBancaria, Cobro, CuentaPorPagar, Egreso
 from app.models.user import User
 from app.models.venta import Venta, VentaItem
-
+from app.models.agenda import OrdenTrabajo
 OPTICA_PATH = "/app/data/OpticaRevisado.xlsm"
 CUENTAS_PATH = "/app/data/Cuentas.xlsx"
 

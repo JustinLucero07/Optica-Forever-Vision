@@ -21,16 +21,23 @@ function Fila({ label, valor }: { label: string; valor: string | number | boolea
   )
 }
 
+function fmtRxInline(v: unknown): string {
+  if (v === null || v === undefined || v === "") return ""
+  const n = Number(v)
+  if (isNaN(n)) return ""
+  return (n >= 0 ? "+" : "") + n.toFixed(2)
+}
+
 function SeccionRx({ titulo, esf, cil, eje, add, av }: { titulo: string; esf?: number | null; cil?: number | null; eje?: number | null; add?: number | null; av?: string | null }) {
-  if (!esf && !cil && !eje) return null
+  if (esf == null && !cil && !eje) return null
   return (
     <div className="space-y-1">
       <p className="text-xs font-semibold text-muted-foreground">{titulo}</p>
       <div className="flex gap-3 text-sm">
-        {esf != null && <span>Esf: <strong>{Number(esf) >= 0 ? "+" : ""}{esf}</strong></span>}
-        {cil != null && <span>Cil: <strong>{Number(cil) >= 0 ? "+" : ""}{cil}</strong></span>}
+        {(esf != null || cil != null) && <span>Esf: <strong>{fmtRxInline(esf ?? 0)}</strong></span>}
+        {cil != null && <span>Cil: <strong>{fmtRxInline(cil)}</strong></span>}
         {eje != null && <span>Eje: <strong>{eje}°</strong></span>}
-        {add != null && <span>Add: <strong>+{add}</strong></span>}
+        {add != null && <span>Add: <strong>{fmtRxInline(add)}</strong></span>}
         {av && <span>AV: <strong>{av}</strong></span>}
       </div>
     </div>
@@ -80,20 +87,38 @@ function printCertificado(c: ConsultaData, paciente: PacienteData | undefined, c
   const avODcc = (c.avcc_od ?? c.avccod ?? "-") as string
   const avOIcc = (c.avcc_oi ?? c.avccoi ?? "-") as string
 
-  // RX rows
+  // Esfera: si null pero hay cil/eje → plano = 0.00
+  function fmtEsf(esf: unknown, cil: unknown, eje: unknown): string {
+    if (esf !== null && esf !== undefined && esf !== "") return fmtRx(esf)
+    if (cil !== null && cil !== undefined && cil !== "") return "0.00"
+    if (eje !== null && eje !== undefined && eje !== "") return "0.00"
+    return ""
+  }
+
+  // RX rows — usa receta LC si existe, sino cae a refracción subjetiva
   const rxOD = recLC ? `
-    <td>${fmtRx(recLC.lc_od_esf) || ""}</td>
+    <td>${fmtEsf(recLC.lc_od_esf, recLC.lc_od_cil, recLC.lc_od_eje)}</td>
     <td>${fmtRx(recLC.lc_od_cil) || ""}</td>
     <td>${recLC.lc_od_eje ? recLC.lc_od_eje + "°" : ""}</td>
-    <td>${recLC.lc_od_add ? "+" + recLC.lc_od_add : ""}</td>
-    <td>${recLC.lc_od_dnp ?? ""}</td>` : "<td></td><td></td><td></td><td></td><td></td>"
+    <td>${recLC.lc_od_add ? fmtRx(recLC.lc_od_add) : ""}</td>
+    <td>${recLC.lc_od_dnp ?? ""}</td>` : `
+    <td>${fmtEsf(c.rx_od_esf, c.rx_od_cil, c.rx_od_eje)}</td>
+    <td>${fmtRx(c.rx_od_cil) || ""}</td>
+    <td>${c.rx_od_eje ? c.rx_od_eje + "°" : ""}</td>
+    <td>${c.rx_od_add ? fmtRx(c.rx_od_add) : ""}</td>
+    <td></td>`
 
   const rxOI = recLC ? `
-    <td>${fmtRx(recLC.lc_oi_esf) || ""}</td>
+    <td>${fmtEsf(recLC.lc_oi_esf, recLC.lc_oi_cil, recLC.lc_oi_eje)}</td>
     <td>${fmtRx(recLC.lc_oi_cil) || ""}</td>
     <td>${recLC.lc_oi_eje ? recLC.lc_oi_eje + "°" : ""}</td>
-    <td>${recLC.lc_oi_add ? "+" + recLC.lc_oi_add : ""}</td>
-    <td>${recLC.lc_oi_dnp ?? ""}</td>` : "<td></td><td></td><td></td><td></td><td></td>"
+    <td>${recLC.lc_oi_add ? fmtRx(recLC.lc_oi_add) : ""}</td>
+    <td>${recLC.lc_oi_dnp ?? ""}</td>` : `
+    <td>${fmtEsf(c.rx_oi_esf, c.rx_oi_cil, c.rx_oi_eje)}</td>
+    <td>${fmtRx(c.rx_oi_cil) || ""}</td>
+    <td>${c.rx_oi_eje ? c.rx_oi_eje + "°" : ""}</td>
+    <td>${c.rx_oi_add ? fmtRx(c.rx_oi_add) : ""}</td>
+    <td></td>`
 
   const observaciones = [c.diagnostico, c.plan_tratamiento].filter(Boolean).join("\n")
 
@@ -134,11 +159,11 @@ function printCertificado(c: ConsultaData, paciente: PacienteData | undefined, c
   <div class="title">Certificado</div>
 
   <p class="intro"><strong>Certificado de ${nom}</strong> con CI: ${paciente?.cedula ?? "—"}</p>
-  <p class="intro">Con la edad de: <strong>${edadNum} años</strong> asistió al examen Optométrico el día <strong>${fechaTexto}</strong></p>
+  <p class="intro">${edadNum ? `Con la edad de: <strong>${edadNum} años</strong>, asistió` : "Asistió"} al examen Optométrico el día <strong>${fechaTexto}</strong></p>
   <p class="intro" style="margin-top:8px">El diagnóstico presente es de: &nbsp;
-    <strong>OD:</strong> &nbsp;${c.rx_od_esf != null ? "" : "EMETROPE."}&nbsp;&nbsp;&nbsp;&nbsp;
+    <strong>OD:</strong> &nbsp;${(c as any).diag_od || (c.rx_od_esf != null ? "AMETROPÍA" : "EMETROPE.")}&nbsp;&nbsp;&nbsp;&nbsp;
     <strong>AV AO S/C:</strong> ${avAOsc || "—"}&nbsp;&nbsp;&nbsp;&nbsp;
-    <strong>OI:</strong> &nbsp;${c.rx_oi_esf != null ? "" : "EMETROPE."}
+    <strong>OI:</strong> &nbsp;${(c as any).diag_oi || (c.rx_oi_esf != null ? "AMETROPÍA" : "EMETROPE.")}
   </p>
 
   <div class="av-block">
@@ -340,7 +365,9 @@ export default function ConsultaDetalle() {
         <Card className="md:col-span-2">
           <CardHeader><CardTitle className="text-sm">Diagnóstico</CardTitle></CardHeader>
           <CardContent className="space-y-0">
-            <Fila label="Diagnóstico" valor={c.diagnostico} />
+            <Fila label="Diagnóstico OD" valor={c.diag_od} />
+            <Fila label="Diagnóstico OI" valor={c.diag_oi} />
+            <Fila label="Notas clínicas" valor={c.diagnostico} />
             <Fila label="Plan" valor={c.plan_tratamiento} />
             <Fila label="Observaciones" valor={c.observaciones} />
             <Fila label="Próximo control" valor={c.proximo_control} />

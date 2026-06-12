@@ -1069,14 +1069,24 @@ export default function Ordenes() {
                       {(["od", "oi"] as const).map(ojo => (
                         <tr key={ojo}>
                           <td className="border p-2 font-bold text-center text-cyan-700 bg-cyan-50 uppercase">{ojo}</td>
-                          {(["esf", "cil", "eje", "add", "prisma", "dnp"] as const).map(field => (
-                            <td key={field} className="border p-1">
+                          {([
+                            { f: "esf",    type: "number", step: "0.25",              placeholder: "±0.00" },
+                            { f: "cil",    type: "number", step: "0.25",              placeholder: "±0.00" },
+                            { f: "eje",    type: "number", step: "1",   min: "0", max: "180", placeholder: "0–180" },
+                            { f: "add",    type: "number", step: "0.25", min: "0",    placeholder: "+0.00" },
+                            { f: "prisma", type: "text",                              placeholder: "2Δ BU" },
+                            { f: "dnp",    type: "number", step: "0.5",  min: "0",    placeholder: "mm" },
+                          ] as { f: keyof RxOjo; type: string; step?: string; min?: string; max?: string; placeholder: string }[]).map(({ f, type, step, min, max, placeholder }) => (
+                            <td key={f} className="border p-1">
                               <input
-                                type="text"
+                                type={type}
+                                step={step}
+                                min={min}
+                                max={max}
                                 className="w-full px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400 rounded"
-                                value={rx[ojo][field]}
-                                onChange={e => setRx(r => ({ ...r, [ojo]: { ...r[ojo], [field]: e.target.value } }))}
-                                placeholder={field === "eje" ? "0–180" : field === "dnp" ? "mm" : "±0.00"}
+                                value={rx[ojo][f as keyof RxOjo]}
+                                onChange={e => setRx(r => ({ ...r, [ojo]: { ...r[ojo], [f]: e.target.value } }))}
+                                placeholder={placeholder}
                               />
                             </td>
                           ))}
@@ -1090,7 +1100,7 @@ export default function Ordenes() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">DP (mm)</label>
-                    <Input value={rx.dp} onChange={e => setRx(r => ({ ...r, dp: e.target.value }))} placeholder="63" className="text-center mt-1" />
+                    <Input type="number" step="0.5" min="0" value={rx.dp} onChange={e => setRx(r => ({ ...r, dp: e.target.value }))} placeholder="63" className="text-center mt-1" />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Material</label>

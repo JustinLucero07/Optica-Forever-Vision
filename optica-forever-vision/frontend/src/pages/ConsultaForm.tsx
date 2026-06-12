@@ -24,6 +24,7 @@ type FormData = {
   cover_test_vl: string; cover_test_vp: string; motilidad: string; estereopsis: string
   seg_anterior_od: string; seg_anterior_oi: string
   fondo_od: string; fondo_oi: string
+  diag_od: string; diag_oi: string
   diagnostico: string; plan_tratamiento: string; observaciones: string; proximo_control: string
   // Receta lentes
   lc_od_esf: string; lc_od_cil: string; lc_od_eje: string; lc_od_add: string; lc_od_dnp: string; lc_od_alt: string
@@ -39,6 +40,7 @@ type FormData = {
 }
 
 function n(v: string) { return v === "" ? null : Number(v) }
+function nInt(v: string) { return v === "" ? null : Math.round(Number(v)) }
 function s(v: string) { return v === "" ? null : v }
 
 function buildPayload(d: FormData) {
@@ -51,30 +53,39 @@ function buildPayload(d: FormData) {
     antecedentes: s(d.antecedentes),
     avsc_od: s(d.avsc_od), avsc_oi: s(d.avsc_oi), avsc_ao: s(d.avsc_ao),
     avcc_od: s(d.avcc_od), avcc_oi: s(d.avcc_oi), avcc_ao: s(d.avcc_ao),
-    rx_od_esf: n(d.rx_od_esf), rx_od_cil: n(d.rx_od_cil), rx_od_eje: n(d.rx_od_eje), rx_od_add: n(d.rx_od_add), rx_od_av: s(d.rx_od_av),
-    rx_oi_esf: n(d.rx_oi_esf), rx_oi_cil: n(d.rx_oi_cil), rx_oi_eje: n(d.rx_oi_eje), rx_oi_add: n(d.rx_oi_add), rx_oi_av: s(d.rx_oi_av),
+    rx_od_esf: n(d.rx_od_esf), rx_od_cil: n(d.rx_od_cil), rx_od_eje: nInt(d.rx_od_eje), rx_od_add: n(d.rx_od_add), rx_od_av: s(d.rx_od_av),
+    rx_oi_esf: n(d.rx_oi_esf), rx_oi_cil: n(d.rx_oi_cil), rx_oi_eje: nInt(d.rx_oi_eje), rx_oi_add: n(d.rx_oi_add), rx_oi_av: s(d.rx_oi_av),
     pio_od: n(d.pio_od), pio_oi: n(d.pio_oi),
     cover_test_vl: s(d.cover_test_vl), cover_test_vp: s(d.cover_test_vp), motilidad: s(d.motilidad), estereopsis: s(d.estereopsis),
     seg_anterior_od: s(d.seg_anterior_od), seg_anterior_oi: s(d.seg_anterior_oi),
     fondo_od: s(d.fondo_od), fondo_oi: s(d.fondo_oi),
+    diag_od: s(d.diag_od), diag_oi: s(d.diag_oi),
     diagnostico: s(d.diagnostico), plan_tratamiento: s(d.plan_tratamiento), observaciones: s(d.observaciones),
     proximo_control: s(d.proximo_control),
     receta_lc: hasLC ? {
-      od_esf: n(d.lc_od_esf), od_cil: n(d.lc_od_cil), od_eje: n(d.lc_od_eje), od_add: n(d.lc_od_add), od_dnp: n(d.lc_od_dnp), od_alt: n(d.lc_od_alt),
-      oi_esf: n(d.lc_oi_esf), oi_cil: n(d.lc_oi_cil), oi_eje: n(d.lc_oi_eje), oi_add: n(d.lc_oi_add), oi_dnp: n(d.lc_oi_dnp), oi_alt: n(d.lc_oi_alt),
+      od_esf: n(d.lc_od_esf), od_cil: n(d.lc_od_cil), od_eje: nInt(d.lc_od_eje), od_add: n(d.lc_od_add), od_dnp: n(d.lc_od_dnp), od_alt: n(d.lc_od_alt),
+      oi_esf: n(d.lc_oi_esf), oi_cil: n(d.lc_oi_cil), oi_eje: nInt(d.lc_oi_eje), oi_add: n(d.lc_oi_add), oi_dnp: n(d.lc_oi_dnp), oi_alt: n(d.lc_oi_alt),
       tipo_lente: s(d.tipo_lente), tipo_armadura: s(d.tipo_armadura), observaciones: s(d.obs_lc),
     } : null,
     receta_cl: hasCL ? {
-      od_marca: s(d.cl_od_marca), od_bc: n(d.cl_od_bc), od_diam: n(d.cl_od_diam), od_esf: n(d.cl_od_esf), od_cil: n(d.cl_od_cil), od_eje: n(d.cl_od_eje),
-      oi_marca: s(d.cl_oi_marca), oi_bc: n(d.cl_oi_bc), oi_diam: n(d.cl_oi_diam), oi_esf: n(d.cl_oi_esf), oi_cil: n(d.cl_oi_cil), oi_eje: n(d.cl_oi_eje),
+      od_marca: s(d.cl_od_marca), od_bc: n(d.cl_od_bc), od_diam: n(d.cl_od_diam), od_esf: n(d.cl_od_esf), od_cil: n(d.cl_od_cil), od_eje: nInt(d.cl_od_eje),
+      oi_marca: s(d.cl_oi_marca), oi_bc: n(d.cl_oi_bc), oi_diam: n(d.cl_oi_diam), oi_esf: n(d.cl_oi_esf), oi_cil: n(d.cl_oi_cil), oi_eje: nInt(d.cl_oi_eje),
       observaciones: s(d.obs_cl),
     } : null,
-    k_od_1: n(d.k_od_1), k_od_2: n(d.k_od_2), k_od_eje: n(d.k_od_eje),
-    k_oi_1: n(d.k_oi_1), k_oi_2: n(d.k_oi_2), k_oi_eje: n(d.k_oi_eje),
+    k_od_1: n(d.k_od_1), k_od_2: n(d.k_od_2), k_od_eje: nInt(d.k_od_eje),
+    k_oi_1: n(d.k_oi_1), k_oi_2: n(d.k_oi_2), k_oi_eje: nInt(d.k_oi_eje),
   }
 }
 
 const SECTIONS = ["Datos", "Agudeza Visual", "Refracción", "Exploración", "Biomicroscopía", "Diagnóstico", "Receta LC", "Contactología"]
+
+const RX_FIELD_PROPS: Record<string, { type: string; step?: string; min?: string; max?: string; placeholder: string }> = {
+  esf: { type: "number", step: "0.25", placeholder: "0.00" },
+  cil: { type: "number", step: "0.25", placeholder: "0.00" },
+  eje: { type: "number", step: "1", min: "0", max: "180", placeholder: "°" },
+  add: { type: "number", step: "0.25", min: "0", placeholder: "0.00" },
+  av:  { type: "text", placeholder: "20/" },
+}
 
 function RxGrid({ prefix, register }: { prefix: string; register: UseFormRegister<FormData> }) {
   return (
@@ -86,14 +97,33 @@ function RxGrid({ prefix, register }: { prefix: string; register: UseFormRegiste
       {["od", "oi"].map(eye => (
         <>
           <div key={`${eye}-label`} className="font-semibold text-xs">{eye.toUpperCase()}</div>
-          {["esf", "cil", "eje", "add", "av"].map(f => (
-            <Input key={f} className="h-8 text-center text-xs" placeholder={f === "eje" ? "°" : f === "av" ? "20/" : "±0.00"} {...register(`${prefix}_${eye}_${f}` as FieldPath<FormData>)} />
-          ))}
+          {["esf", "cil", "eje", "add", "av"].map(f => {
+            const props = RX_FIELD_PROPS[f]
+            return (
+              <Input
+                key={f}
+                type={props.type}
+                step={props.step}
+                min={props.min}
+                max={props.max}
+                className="h-8 text-center text-xs"
+                placeholder={props.placeholder}
+                {...register(`${prefix}_${eye}_${f}` as FieldPath<FormData>)}
+              />
+            )
+          })}
         </>
       ))}
     </div>
   )
 }
+
+const DIAG_CHIPS = [
+  "Miopía", "Hipermetropía", "Astigmatismo", "Astigmatismo miópico",
+  "Astigmatismo hipermetrópico", "Astigmatismo mixto", "Emetropía",
+  "Presbicia", "Ambliopía", "Estrabismo", "Ojo seco", "Pterigión",
+  "Catarata", "Glaucoma sospechoso", "Daltonismo",
+]
 
 export default function ConsultaForm() {
   const { pacienteId, consultaId } = useParams()
@@ -118,7 +148,7 @@ export default function ConsultaForm() {
     enabled: !!consultaId,
   })
 
-  const { register, handleSubmit, reset, getValues } = useForm<FormData>({
+  const { register, handleSubmit, reset, getValues, setValue } = useForm<FormData>({
     defaultValues: { fecha: new Date().toISOString().slice(0, 10) },
   })
 
@@ -137,6 +167,7 @@ export default function ConsultaForm() {
       cover_test_vl: c.cover_test_vl ?? "", cover_test_vp: c.cover_test_vp ?? "", motilidad: c.motilidad ?? "", estereopsis: c.estereopsis ?? "",
       seg_anterior_od: c.seg_anterior_od ?? "", seg_anterior_oi: c.seg_anterior_oi ?? "",
       fondo_od: c.fondo_od ?? "", fondo_oi: c.fondo_oi ?? "",
+      diag_od: c.diag_od ?? "", diag_oi: c.diag_oi ?? "",
       diagnostico: c.diagnostico ?? "", plan_tratamiento: c.plan_tratamiento ?? "", observaciones: c.observaciones ?? "", proximo_control: c.proximo_control ?? "",
       lc_od_esf: recLC?.lc_od_esf ?? "", lc_od_cil: recLC?.lc_od_cil ?? "", lc_od_eje: recLC?.lc_od_eje ?? "", lc_od_add: recLC?.lc_od_add ?? "", lc_od_dnp: recLC?.lc_od_dnp ?? "", lc_od_alt: recLC?.lc_od_alt ?? "",
       lc_oi_esf: recLC?.lc_oi_esf ?? "", lc_oi_cil: recLC?.lc_oi_cil ?? "", lc_oi_eje: recLC?.lc_oi_eje ?? "", lc_oi_add: recLC?.lc_oi_add ?? "", lc_oi_dnp: recLC?.lc_oi_dnp ?? "", lc_oi_alt: recLC?.lc_oi_alt ?? "",
@@ -346,8 +377,21 @@ export default function ConsultaForm() {
                   {["od", "oi"].map(eye => (
                     <>
                       <div key={`${eye}-k`} className="font-semibold text-xs">{eye.toUpperCase()}</div>
-                      {["1", "2", "eje"].map(f => (
-                        <Input key={f} className="h-8 text-center text-xs" placeholder={f === "eje" ? "°" : "0.00"} {...register(`k_${eye}_${f}` as any)} />
+                      {[
+                        { f: "1",   type: "number", step: "0.01", placeholder: "0.00" },
+                        { f: "2",   type: "number", step: "0.01", placeholder: "0.00" },
+                        { f: "eje", type: "number", step: "1", min: "0", max: "180", placeholder: "°" },
+                      ].map(({ f, type, step, min, max, placeholder }) => (
+                        <Input
+                          key={f}
+                          type={type}
+                          step={step}
+                          min={min}
+                          max={max}
+                          className="h-8 text-center text-xs"
+                          placeholder={placeholder}
+                          {...register(`k_${eye}_${f}` as any)}
+                        />
                       ))}
                     </>
                   ))}
@@ -382,10 +426,46 @@ export default function ConsultaForm() {
 
           {/* 5 - Diagnóstico */}
           {seccion === 5 && (
-            <div className="space-y-4 max-w-2xl">
+            <div className="space-y-5 max-w-2xl">
+              {/* Diagnóstico por ojo */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Diagnóstico por ojo</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["od", "oi"] as const).map(eye => (
+                    <div key={eye} className="space-y-1">
+                      <Label className="text-xs font-semibold">{eye.toUpperCase()}</Label>
+                      <Input
+                        placeholder={`Diagnóstico ${eye.toUpperCase()}…`}
+                        {...register(`diag_${eye}` as FieldPath<FormData>)}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {/* Chips de diagnósticos frecuentes */}
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground mb-1.5">Frecuentes (clic para insertar en OD y OI):</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DIAG_CHIPS.map(chip => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => {
+                          const cur_od = getValues("diag_od")
+                          const cur_oi = getValues("diag_oi")
+                          setValue("diag_od", cur_od ? `${cur_od}, ${chip}` : chip, { shouldDirty: true })
+                          setValue("diag_oi", cur_oi ? `${cur_oi}, ${chip}` : chip, { shouldDirty: true })
+                        }}
+                        className="px-2.5 py-1 rounded-full text-xs border border-cyan-200 bg-cyan-50 text-cyan-800 hover:bg-cyan-100 dark:bg-cyan-950/30 dark:text-cyan-300 dark:border-cyan-800 transition-colors"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
               <div className="space-y-1">
-                <Label>Diagnóstico</Label>
-                <Textarea rows={3} {...register("diagnostico")} />
+                <Label>Diagnóstico general / notas clínicas</Label>
+                <Textarea rows={3} placeholder="Observaciones clínicas adicionales, antecedentes relevantes…" {...register("diagnostico")} />
               </div>
               <div className="space-y-1">
                 <Label>Plan de tratamiento</Label>
@@ -415,7 +495,16 @@ export default function ConsultaForm() {
                   <>
                     <div key={eye} className="font-semibold text-xs">{eye.toUpperCase()}</div>
                     {["esf", "cil", "eje", "add", "dnp", "alt"].map(f => (
-                      <Input key={f} className="h-8 text-center text-xs" {...register(`lc_${eye}_${f}` as any)} />
+                      <Input
+                        key={f}
+                        type="number"
+                        step={f === "eje" ? "1" : f === "dnp" || f === "alt" ? "0.5" : "0.25"}
+                        min={f === "eje" ? "0" : undefined}
+                        max={f === "eje" ? "180" : undefined}
+                        className="h-8 text-center text-xs"
+                        placeholder={f === "eje" ? "°" : "0.00"}
+                        {...register(`lc_${eye}_${f}` as any)}
+                      />
                     ))}
                   </>
                 ))}
@@ -455,8 +544,24 @@ export default function ConsultaForm() {
                 {["od", "oi"].map(eye => (
                   <>
                     <div key={eye} className="font-semibold text-xs">{eye.toUpperCase()}</div>
-                    {["marca", "bc", "diam", "esf", "cil", "eje"].map(f => (
-                      <Input key={f} className="h-8 text-center text-xs" {...register(`cl_${eye}_${f}` as any)} />
+                    {[
+                      { f: "marca", type: "text",   placeholder: "Ej: Acuvue" },
+                      { f: "bc",    type: "number", step: "0.01", min: "0",   placeholder: "8.60" },
+                      { f: "diam",  type: "number", step: "0.01", min: "0",   placeholder: "14.0" },
+                      { f: "esf",   type: "number", step: "0.25",             placeholder: "0.00" },
+                      { f: "cil",   type: "number", step: "0.25",             placeholder: "0.00" },
+                      { f: "eje",   type: "number", step: "1",   min: "0", max: "180", placeholder: "°" },
+                    ].map(({ f, type, step, min, max, placeholder }) => (
+                      <Input
+                        key={f}
+                        type={type}
+                        step={step}
+                        min={min}
+                        max={max}
+                        placeholder={placeholder}
+                        className="h-8 text-center text-xs"
+                        {...register(`cl_${eye}_${f}` as any)}
+                      />
                     ))}
                   </>
                 ))}

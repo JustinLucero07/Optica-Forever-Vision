@@ -73,6 +73,8 @@ class ConsultaCreate(BaseModel):
     seg_anterior_oi: str | None = None
     fondo_od: str | None = None
     fondo_oi: str | None = None
+    diag_od: str | None = None
+    diag_oi: str | None = None
     diagnostico: str | None = None
     plan_tratamiento: str | None = None
     observaciones: str | None = None
@@ -159,6 +161,8 @@ class ConsultaOut(BaseModel):
     seg_anterior_oi: str | None
     fondo_od: str | None
     fondo_oi: str | None
+    diag_od: str | None
+    diag_oi: str | None
     diagnostico: str | None
     plan_tratamiento: str | None
     observaciones: str | None
