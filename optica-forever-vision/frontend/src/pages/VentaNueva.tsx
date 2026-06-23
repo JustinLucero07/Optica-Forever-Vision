@@ -1,14 +1,15 @@
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Search, Plus, Trash2, ArrowLeft, ShoppingCart, Loader2, Receipt } from "lucide-react"
+import { Search, Plus, Trash2, ArrowLeft, ShoppingCart, Loader2, Receipt, ClipboardList } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Dialog, DialogHeader, DialogBody } from "@/components/ui/dialog"
 import PacienteCombobox from "@/components/PacienteCombobox"
 
 interface Producto { id: number; nombre: string; codigo: string | null; precio_venta: number; stock_actual: number; unidad: string; proveedor?: { id: number; nombre: string } | null }
@@ -18,12 +19,27 @@ function calcSubtotal(it: CartItem) {
   return it.cantidad * it.precio_unitario * (1 - it.descuento_pct / 100)
 }
 
+const DRAFT_KEY = "venta_nueva_draft"
+
 export default function VentaNueva() {
   const navigate = useNavigate()
   const location = useLocation()
   const presupuesto = (location.state as any)?.presupuesto
+  const ordenInicial = (location.state as any)?.orden as any | undefined
+  // Si viene de presupuesto/orden no usamos el borrador guardado
+  const hasExternalInit = !!(presupuesto || ordenInicial)
 
   const initCart = (): CartItem[] => {
+    if (ordenInicial) {
+      return [{
+        producto_id: null,
+        descripcion: ordenInicial.tipo ?? "Orden de laboratorio",
+        cantidad: 1,
+        precio_unitario: Number(ordenInicial.precio_venta ?? 0),
+        descuento_pct: 0,
+        garantia_meses: null,
+      }]
+    }
     if (presupuesto?.items?.length) {
       return presupuesto.items.map((it: any) => ({
         producto_id: null,
@@ -34,15 +50,53 @@ export default function VentaNueva() {
         garantia_meses: null,
       }))
     }
+    // Restaurar borrador si existe
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) return JSON.parse(raw).cart ?? []
+    } catch { /* ignore */ }
     return []
+  }
+
+  const initFromDraft = (field: string, fallback: string) => {
+    if (hasExternalInit) return fallback
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) return JSON.parse(raw)[field] ?? fallback
+    } catch { /* ignore */ }
+    return fallback
   }
 
   const [busqueda, setBusqueda] = useState("")
   const [cart, setCart] = useState<CartItem[]>(initCart)
-  const [pacienteId, setPacienteId] = useState(presupuesto?.paciente_id ? String(presupuesto.paciente_id) : "")
-  const [descuentoGlobal, setDescuentoGlobal] = useState("0")
-  const [notas, setNotas] = useState(presupuesto ? `Basado en presupuesto ${presupuesto.numero}` : "")
+  const [pacienteId, setPacienteId] = useState(
+    ordenInicial?.paciente_id ? String(ordenInicial.paciente_id)
+      : presupuesto?.paciente_id ? String(presupuesto.paciente_id)
+      : initFromDraft("pacienteId", "")
+  )
+  const [descuentoGlobal, setDescuentoGlobal] = useState(initFromDraft("descuentoGlobal", "0"))
+  const [notas, setNotas] = useState(
+    ordenInicial ? `Orden ${ordenInicial.numero} — ${ordenInicial.tipo}`
+      : presupuesto ? `Basado en presupuesto ${presupuesto.numero}`
+      : initFromDraft("notas", "")
+  )
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [linkedOrdenId, setLinkedOrdenId] = useState<number | null>(ordenInicial?.id ?? null)
+
+  // Guardar borrador al cambiar cart, paciente o notas (solo si no viene de externo)
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (hasExternalInit) return
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = setTimeout(() => {
+      if (cart.length > 0 || pacienteId || notas) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ cart, pacienteId, notas, descuentoGlobal }))
+      }
+    }, 800)
+    return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current) }
+  }, [cart, pacienteId, notas, descuentoGlobal, hasExternalInit])
+  const [showOrdenPicker, setShowOrdenPicker] = useState(false)
+  const [ordenBusq, setOrdenBusq] = useState("")
 
   const { data: productos = [] } = useQuery<Producto[]>({
     queryKey: ["productos-busq", busqueda],
@@ -50,6 +104,36 @@ export default function VentaNueva() {
     enabled: busqueda.length >= 1,
     staleTime: 5_000,
   })
+
+  const { data: ordenesDisponibles = [] } = useQuery<any[]>({
+    queryKey: ["ordenes-sin-venta"],
+    queryFn: () => api.get("/ordenes", { params: { limit: 200 } }).then(r =>
+      (Array.isArray(r.data) ? r.data : r.data.items ?? []).filter((o: any) => !o.venta_id && !o.es_proforma && o.estado !== "rechazado")
+    ),
+    enabled: showOrdenPicker,
+  })
+
+  const ordenesFiltradas = ordenesDisponibles.filter((o: any) =>
+    !ordenBusq || o.numero?.toLowerCase().includes(ordenBusq.toLowerCase()) ||
+    o.tipo?.toLowerCase().includes(ordenBusq.toLowerCase())
+  )
+
+  function cargarDesdeOrden(o: any) {
+    const desc = o.tipo ?? "Orden de laboratorio"
+    setCart(prev => [...prev, {
+      producto_id: null,
+      descripcion: desc,
+      cantidad: 1,
+      precio_unitario: Number(o.precio_venta ?? 0),
+      descuento_pct: 0,
+      garantia_meses: null,
+    }])
+    if (!pacienteId && o.paciente_id) setPacienteId(String(o.paciente_id))
+    if (!notas) setNotas(`Orden ${o.numero} — ${o.tipo}`)
+    setLinkedOrdenId(o.id)
+    setShowOrdenPicker(false)
+    setOrdenBusq("")
+  }
 
 
   const venderMut = useMutation({
@@ -67,8 +151,12 @@ export default function VentaNueva() {
         garantia_meses: it.garantia_meses || null,
       })),
     }),
-    onSuccess: (res) => {
-      toast.success(`Venta ${res.data.numero} registrada`)
+    onSuccess: async (res) => {
+      if (linkedOrdenId) {
+        await api.put(`/ordenes/${linkedOrdenId}`, { venta_id: res.data.id }).catch(() => {})
+      }
+      localStorage.removeItem(DRAFT_KEY)
+      toast.success(`Venta ${res.data.numero} registrada — registra el cobro aquí`)
       navigate(`/ventas/${res.data.id}`)
     },
     onError: (e) => toast.error(errMsg(e, "Error al guardar")),
@@ -102,6 +190,11 @@ export default function VentaNueva() {
       <div className="flex items-center gap-3 px-6 py-4 border-b bg-background">
         <Button variant="ghost" size="sm" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /></Button>
         <h1 className="font-semibold text-lg">Nueva Venta</h1>
+        {ordenInicial && (
+          <span className="flex items-center gap-1.5 text-xs bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 px-2.5 py-1 rounded-full">
+            <ClipboardList className="h-3 w-3" /> Desde orden {ordenInicial.numero}
+          </span>
+        )}
         {presupuesto && (
           <span className="flex items-center gap-1.5 text-xs bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-200/60 px-2.5 py-1 rounded-full">
             <Receipt className="h-3 w-3" /> Desde presupuesto {presupuesto.numero}
@@ -143,9 +236,16 @@ export default function VentaNueva() {
             )}
           </div>
 
-          <div className="p-4 border-t">
+          <div className="p-4 border-t space-y-2">
             <Button variant="outline" size="sm" className="w-full" onClick={agregarManual}>
               <Plus className="h-4 w-4 mr-1" /> Ítem manual
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              className="w-full text-emerald-700 border-emerald-300 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-700 dark:hover:bg-emerald-950/30"
+              onClick={() => setShowOrdenPicker(true)}
+            >
+              <ClipboardList className="h-4 w-4 mr-1" /> Cargar desde Orden Lab
             </Button>
           </div>
         </div>
@@ -242,6 +342,47 @@ export default function VentaNueva() {
           </div>
         </div>
       </div>
+      {/* Dialog: selector de orden de lab */}
+      <Dialog open={showOrdenPicker} onClose={() => { setShowOrdenPicker(false); setOrdenBusq("") }} className="max-w-lg">
+        <DialogHeader onClose={() => { setShowOrdenPicker(false); setOrdenBusq("") }}>
+          Cargar desde Orden de Lab
+        </DialogHeader>
+        <DialogBody>
+          <div className="space-y-3">
+            <Input
+              autoFocus
+              placeholder="Buscar por número, tipo…"
+              value={ordenBusq}
+              onChange={e => setOrdenBusq(e.target.value)}
+            />
+            <div className="max-h-80 overflow-y-auto space-y-1">
+              {ordenesFiltradas.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6">No hay órdenes disponibles sin facturar</p>
+              )}
+              {ordenesFiltradas.map((o: any) => (
+                <button
+                  key={o.id}
+                  className="w-full text-left rounded-lg border px-3 py-2.5 hover:bg-accent transition-colors"
+                  onClick={() => cargarDesdeOrden(o)}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-semibold text-sm">{o.numero}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      o.estado === "listo" ? "bg-green-100 text-green-700" :
+                      o.estado === "en_proceso" ? "bg-blue-100 text-blue-700" :
+                      "bg-gray-100 text-gray-600"
+                    }`}>{o.estado}</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">{o.tipo}</p>
+                  {o.precio_venta && (
+                    <p className="text-sm font-semibold text-emerald-600 mt-0.5">${Number(o.precio_venta).toFixed(2)}</p>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </DialogBody>
+      </Dialog>
     </div>
   )
 }

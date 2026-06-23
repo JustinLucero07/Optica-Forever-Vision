@@ -333,6 +333,18 @@ def alertas_dashboard(
         for q, cr, p in cuotas_rows
     ]
 
+    # 5b. Productos sin stock (agotados)
+    sin_stock_rows = db.execute(
+        select(Producto).where(
+            Producto.activo.is_(True),
+            Producto.stock_actual <= 0,
+        ).order_by(Producto.nombre)
+    ).scalars().all()
+    productos_sin_stock = [
+        {"id": p.id, "nombre": p.nombre, "stock_actual": p.stock_actual}
+        for p in sin_stock_rows
+    ]
+
     # 5. Órdenes listas sin retirar (≥ 3 días en estado "listo")
     limite_dt = datetime.now() - timedelta(days=3)
     ordenes_rows = db.execute(
@@ -364,6 +376,7 @@ def alertas_dashboard(
         "turnos_hoy": turnos_hoy,
         "cuotas_proximas": cuotas_proximas,
         "ordenes_sin_retirar": ordenes_sin_retirar,
+        "productos_sin_stock": productos_sin_stock,
     }
 
 
@@ -555,7 +568,7 @@ def reporte_inventario(
             "precio_venta": float(p.precio_venta),
             "precio_costo": float(p.precio_costo) if p.precio_costo else None,
             "alerta": p.stock_actual <= p.stock_minimo,
-            "valor_inventario": float(p.precio_costo or p.precio_venta) * p.stock_actual,
+            "valor_inventario": float(p.precio_costo or p.precio_venta) * float(p.stock_actual),
         }
         for p in rows
     ]
@@ -653,6 +666,61 @@ def reporte_ordenes(
     ]
     total_lab = sum(d["precio_lab"] for d in data if d["precio_lab"])
     return {"filas": data, "total_lab": total_lab, "cantidad": len(data)}
+
+
+@router.get("/proformas")
+def reporte_proformas(
+    desde: date | None = None,
+    hasta: date | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    stmt = (
+        select(
+            OrdenTrabajo.id, OrdenTrabajo.numero, OrdenTrabajo.fecha_envio,
+            OrdenTrabajo.tipo, OrdenTrabajo.lab_proveedor, OrdenTrabajo.estado,
+            OrdenTrabajo.precio_venta, OrdenTrabajo.precio_lab,
+            OrdenTrabajo.es_proforma, OrdenTrabajo.venta_id,
+            Paciente.apellidos, Paciente.nombres,
+        )
+        .join(Paciente, OrdenTrabajo.paciente_id == Paciente.id)
+        .order_by(OrdenTrabajo.fecha_envio.desc())
+    )
+    if desde:
+        stmt = stmt.where(OrdenTrabajo.fecha_envio >= desde)
+    if hasta:
+        stmt = stmt.where(OrdenTrabajo.fecha_envio <= hasta)
+
+    rows = db.execute(stmt).all()
+    filas = [
+        {
+            "numero": r.numero,
+            "paciente": f"{r.apellidos} {r.nombres}",
+            "tipo": r.tipo,
+            "lab_proveedor": r.lab_proveedor,
+            "estado": r.estado,
+            "fecha_envio": r.fecha_envio.isoformat(),
+            "precio_venta": float(r.precio_venta) if r.precio_venta else None,
+            "precio_lab": float(r.precio_lab) if r.precio_lab else None,
+            "es_proforma": r.es_proforma,
+            "facturada": r.venta_id is not None,
+        }
+        for r in rows
+    ]
+
+    facturadas = [f for f in filas if f["facturada"]]
+    proformas = [f for f in filas if f["es_proforma"]]
+    pendientes = [f for f in filas if not f["facturada"] and not f["es_proforma"]]
+
+    return {
+        "filas": filas,
+        "total_facturado": sum(f["precio_venta"] or 0 for f in facturadas),
+        "total_proforma": sum(f["precio_venta"] or 0 for f in proformas),
+        "total_pendiente": sum(f["precio_venta"] or 0 for f in pendientes),
+        "cant_facturadas": len(facturadas),
+        "cant_proformas": len(proformas),
+        "cant_pendientes": len(pendientes),
+    }
 
 
 @router.get("/analytics")

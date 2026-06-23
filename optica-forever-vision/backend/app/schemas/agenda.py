@@ -77,7 +77,13 @@ class OrdenCreate(BaseModel):
     tipo: str
     descripcion: str
     precio_lab: float | None = None
+    precio_venta: float | None = None
+    armazon_ref: str | None = None
+    armazon_color: str | None = None
+    armazon_talla: str | None = None
+    es_proforma: bool = False
     notas: str | None = None
+    producto_id: int | None = None  # para descuento de stock cuando fuente=stock
 
 
 class OrdenUpdate(BaseModel):
@@ -89,6 +95,12 @@ class OrdenUpdate(BaseModel):
     estado: str | None = None
     descripcion: str | None = None
     precio_lab: float | None = None
+    precio_venta: float | None = None
+    armazon_ref: str | None = None
+    armazon_color: str | None = None
+    armazon_talla: str | None = None
+    es_proforma: bool | None = None
+    venta_id: int | None = None
     notas: str | None = None
 
 
@@ -109,6 +121,11 @@ class OrdenOut(BaseModel):
     tipo: str
     descripcion: str
     precio_lab: float | None
+    precio_venta: float | None = None
+    armazon_ref: str | None = None
+    armazon_color: str | None = None
+    armazon_talla: str | None = None
+    es_proforma: bool = False
     notas: str | None
     created_at: datetime
     updated_at: datetime

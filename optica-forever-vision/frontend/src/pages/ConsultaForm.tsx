@@ -24,6 +24,7 @@ type FormData = {
   cover_test_vl: string; cover_test_vp: string; motilidad: string; estereopsis: string
   seg_anterior_od: string; seg_anterior_oi: string
   fondo_od: string; fondo_oi: string
+  test_colores: string
   diag_od: string; diag_oi: string
   diagnostico: string; plan_tratamiento: string; observaciones: string; proximo_control: string
   // Receta lentes
@@ -59,6 +60,7 @@ function buildPayload(d: FormData) {
     cover_test_vl: s(d.cover_test_vl), cover_test_vp: s(d.cover_test_vp), motilidad: s(d.motilidad), estereopsis: s(d.estereopsis),
     seg_anterior_od: s(d.seg_anterior_od), seg_anterior_oi: s(d.seg_anterior_oi),
     fondo_od: s(d.fondo_od), fondo_oi: s(d.fondo_oi),
+    test_colores: s(d.test_colores),
     diag_od: s(d.diag_od), diag_oi: s(d.diag_oi),
     diagnostico: s(d.diagnostico), plan_tratamiento: s(d.plan_tratamiento), observaciones: s(d.observaciones),
     proximo_control: s(d.proximo_control),
@@ -148,7 +150,7 @@ export default function ConsultaForm() {
     enabled: !!consultaId,
   })
 
-  const { register, handleSubmit, reset, getValues, setValue } = useForm<FormData>({
+  const { register, handleSubmit, reset, getValues, setValue, watch } = useForm<FormData>({
     defaultValues: { fecha: new Date().toISOString().slice(0, 10) },
   })
 
@@ -167,6 +169,7 @@ export default function ConsultaForm() {
       cover_test_vl: c.cover_test_vl ?? "", cover_test_vp: c.cover_test_vp ?? "", motilidad: c.motilidad ?? "", estereopsis: c.estereopsis ?? "",
       seg_anterior_od: c.seg_anterior_od ?? "", seg_anterior_oi: c.seg_anterior_oi ?? "",
       fondo_od: c.fondo_od ?? "", fondo_oi: c.fondo_oi ?? "",
+      test_colores: c.test_colores ?? "",
       diag_od: c.diag_od ?? "", diag_oi: c.diag_oi ?? "",
       diagnostico: c.diagnostico ?? "", plan_tratamiento: c.plan_tratamiento ?? "", observaciones: c.observaciones ?? "", proximo_control: c.proximo_control ?? "",
       lc_od_esf: recLC?.lc_od_esf ?? "", lc_od_cil: recLC?.lc_od_cil ?? "", lc_od_eje: recLC?.lc_od_eje ?? "", lc_od_add: recLC?.lc_od_add ?? "", lc_od_dnp: recLC?.lc_od_dnp ?? "", lc_od_alt: recLC?.lc_od_alt ?? "",
@@ -283,7 +286,7 @@ export default function ConsultaForm() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        <form>
+        <form style={{ minHeight: 420 }}>
           {/* 0 - Datos */}
           {seccion === 0 && (
             <div className="space-y-4 max-w-2xl">
@@ -305,28 +308,41 @@ export default function ConsultaForm() {
           {/* 1 - Agudeza Visual */}
           {seccion === 1 && (
             <div className="space-y-6 max-w-2xl">
-              <div className="space-y-3">
-                <h3 className="font-semibold text-sm">Agudeza Visual Sin Corrección (AVSC)</h3>
-                <div className="grid grid-cols-3 gap-3">
-                  {["od", "oi", "ao"].map(e => (
-                    <div key={e} className="space-y-1">
-                      <Label className="text-xs">{e.toUpperCase()}</Label>
-                      <Input placeholder="20/20" {...register(`avsc_${e}` as any)} />
-                    </div>
-                  ))}
+              {[
+                { label: "Agudeza Visual Sin Corrección (AVSC)", prefix: "avsc" },
+                { label: "Agudeza Visual Con Corrección Anterior (AVCC)", prefix: "avcc" },
+              ].map(({ label, prefix }) => (
+                <div key={prefix} className="space-y-3">
+                  <h3 className="font-semibold text-sm">{label}</h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    {["od", "oi", "ao"].map(e => {
+                      const fieldName = `${prefix}_${e}` as FieldPath<FormData>
+                      const stored = watch(fieldName) as string ?? ""
+                      const isNumericFmt = /^20\/\d+$/.test(stored)
+                      const denom = isNumericFmt ? stored.slice(3) : stored
+                      return (
+                        <div key={e} className="space-y-1">
+                          <Label className="text-xs">{e.toUpperCase()}</Label>
+                          <div className="flex items-center border rounded-md overflow-hidden focus-within:ring-2 focus-within:ring-ring bg-background h-9">
+                            <span className="px-2 text-sm font-medium text-muted-foreground bg-muted/60 border-r h-full flex items-center select-none">20/</span>
+                            <input
+                              type="text"
+                              placeholder="40"
+                              value={denom}
+                              className="flex-1 h-full px-2 text-sm bg-background focus:outline-none w-0"
+                              onChange={ev => {
+                                const v = ev.target.value
+                                const isNum = /^\d+$/.test(v)
+                                setValue(fieldName, v ? (isNum ? `20/${v}` : v) : "", { shouldDirty: true })
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-3">
-                <h3 className="font-semibold text-sm">Agudeza Visual Con Corrección Anterior (AVCC)</h3>
-                <div className="grid grid-cols-3 gap-3">
-                  {["od", "oi", "ao"].map(e => (
-                    <div key={e} className="space-y-1">
-                      <Label className="text-xs">{e.toUpperCase()}</Label>
-                      <Input placeholder="20/20" {...register(`avcc_${e}` as any)} />
-                    </div>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
           )}
 
@@ -427,6 +443,11 @@ export default function ConsultaForm() {
           {/* 5 - Diagnóstico */}
           {seccion === 5 && (
             <div className="space-y-5 max-w-2xl">
+              {/* Test de colores */}
+              <div className="space-y-1 max-w-xs">
+                <Label>Test de colores (Ishihara)</Label>
+                <Input placeholder="Ej: 17/17 correcto, daltonismo…" {...register("test_colores")} />
+              </div>
               {/* Diagnóstico por ojo */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Diagnóstico por ojo</p>
@@ -450,10 +471,13 @@ export default function ConsultaForm() {
                         key={chip}
                         type="button"
                         onClick={() => {
-                          const cur_od = getValues("diag_od")
-                          const cur_oi = getValues("diag_oi")
-                          setValue("diag_od", cur_od ? `${cur_od}, ${chip}` : chip, { shouldDirty: true })
-                          setValue("diag_oi", cur_oi ? `${cur_oi}, ${chip}` : chip, { shouldDirty: true })
+                          const addChip = (cur: string) => {
+                            const existing = cur.split(",").map(s => s.trim()).filter(Boolean)
+                            if (existing.includes(chip)) return cur
+                            return cur ? `${cur}, ${chip}` : chip
+                          }
+                          setValue("diag_od", addChip(getValues("diag_od")), { shouldDirty: true })
+                          setValue("diag_oi", addChip(getValues("diag_oi")), { shouldDirty: true })
                         }}
                         className="px-2.5 py-1 rounded-full text-xs border border-cyan-200 bg-cyan-50 text-cyan-800 hover:bg-cyan-100 dark:bg-cyan-950/30 dark:text-cyan-300 dark:border-cyan-800 transition-colors"
                       >

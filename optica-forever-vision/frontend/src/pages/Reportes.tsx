@@ -213,12 +213,13 @@ function YearPicker({ year, onChange }: { year: number; onChange: (y: number) =>
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-type Tab = "anual" | "ventas" | "cobros" | "inventario" | "pacientes" | "inactivos"
+type Tab = "anual" | "ventas" | "cobros" | "inventario" | "pacientes" | "inactivos" | "proformas"
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "anual", label: "Vista Anual" },
   { id: "ventas", label: "Ventas" },
   { id: "cobros", label: "Cobros" },
+  { id: "proformas", label: "Órdenes Lab" },
   { id: "inventario", label: "Inventario" },
   { id: "pacientes", label: "Pacientes" },
   { id: "inactivos", label: "Inactivos" },
@@ -266,11 +267,20 @@ export default function Reportes() {
     staleTime: 30_000,
   })
 
-  const { data: inventario, isLoading: invLoading } = useQuery({
+  const { data: inventario, isLoading: invLoading, isError: invError, refetch: refetchInv } = useQuery({
     queryKey: ["reportes-inventario"],
     queryFn: () => api.get("/reportes/inventario").then(r => r.data),
     enabled: tab === "inventario",
     staleTime: 60_000,
+    refetchOnMount: true,
+    retry: 1,
+  })
+
+  const { data: proformas, isLoading: proformasLoading } = useQuery({
+    queryKey: ["reportes-proformas", desde, hasta],
+    queryFn: () => api.get("/reportes/proformas", { params: { desde, hasta } }).then(r => r.data),
+    enabled: tab === "proformas",
+    staleTime: 30_000,
   })
 
   const { data: inactivos, isLoading: inactivosLoading } = useQuery({
@@ -655,7 +665,12 @@ export default function Reportes() {
           </div>
           {invLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
-          ) : inventario && (
+          ) : invError ? (
+            <div className="text-center py-10 space-y-3">
+              <p className="text-destructive text-sm">Error al cargar inventario.</p>
+              <Button variant="outline" size="sm" onClick={() => refetchInv()}>Reintentar</Button>
+            </div>
+          ) : inventario ? (
             <>
               <div className="grid grid-cols-3 gap-4">
                 <div className="glass rounded-2xl p-4 text-center"><p className="text-xs text-muted-foreground">Valor total inventario</p><p className="text-2xl font-bold text-primary tabular-nums">{fmtUSD(inventario.valor_total)}</p></div>
@@ -705,7 +720,84 @@ export default function Reportes() {
                 <Paginador page={pageInv} total={inventario.filas.length} perPage={perPageInv} onChange={setPageInv} onPerPageChange={n => { setPerPageInv(n); setPageInv(1) }} />
               </div>
             </>
+          ) : (
+            <div className="text-center py-10 text-muted-foreground text-sm">Sin productos en inventario</div>
           )}
+        </div>
+      )}
+
+      {/* ── ÓRDENES LAB / PROFORMAS ── */}
+      {tab === "proformas" && (
+        <div className="space-y-5 anim-fade-in">
+          <div className="flex flex-wrap items-center gap-3 no-print">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">Desde</label>
+              <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 w-40" />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">Hasta</label>
+              <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-9 w-40" />
+            </div>
+          </div>
+          {proformasLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
+          ) : proformas ? (
+            <>
+              {/* KPI cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="glass rounded-2xl p-4 text-center border-l-4 border-emerald-500">
+                  <p className="text-xs text-muted-foreground">Facturado</p>
+                  <p className="text-2xl font-bold text-emerald-600 tabular-nums">{fmtUSD(proformas.total_facturado)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{proformas.cant_facturadas} órdenes</p>
+                </div>
+                <div className="glass rounded-2xl p-4 text-center border-l-4 border-orange-400">
+                  <p className="text-xs text-muted-foreground">Proformas (sin facturar)</p>
+                  <p className="text-2xl font-bold text-orange-500 tabular-nums">{fmtUSD(proformas.total_proforma)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{proformas.cant_proformas} órdenes</p>
+                </div>
+                <div className="glass rounded-2xl p-4 text-center border-l-4 border-blue-400">
+                  <p className="text-xs text-muted-foreground">Pendientes de facturar</p>
+                  <p className="text-2xl font-bold text-blue-500 tabular-nums">{fmtUSD(proformas.total_pendiente)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{proformas.cant_pendientes} órdenes</p>
+                </div>
+              </div>
+              {/* Tabla detalle */}
+              <div className="glass rounded-2xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/40 border-b">
+                      {["N°", "Paciente", "Tipo", "Lab", "Estado", "Precio venta", "Estado factura"].map(h => (
+                        <th key={h} className="px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide text-left">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {proformas.filas.length === 0 ? (
+                      <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">Sin órdenes en el período</td></tr>
+                    ) : proformas.filas.map((r: any, i: number) => (
+                      <tr key={i} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-2.5 font-mono font-medium">{r.numero}</td>
+                        <td className="px-4 py-2.5">{r.paciente}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{r.tipo}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">{r.lab_proveedor}</td>
+                        <td className="px-4 py-2.5 capitalize">{r.estado}</td>
+                        <td className="px-4 py-2.5 font-semibold tabular-nums">{r.precio_venta ? fmtUSD(r.precio_venta) : "—"}</td>
+                        <td className="px-4 py-2.5">
+                          {r.facturada ? (
+                            <span className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">✓ Facturada</span>
+                          ) : r.es_proforma ? (
+                            <span className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded-full font-medium">Proforma</span>
+                          ) : (
+                            <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Pendiente</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
         </div>
       )}
 

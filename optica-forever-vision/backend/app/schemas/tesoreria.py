@@ -117,6 +117,7 @@ class TransferenciaCreate(BaseModel):
     cuenta_origen_id: int
     cuenta_destino_id: int
     monto: float
+    comision: float = 0.0
     concepto: str | None = None
     notas: str | None = None
 
@@ -128,6 +129,7 @@ class TransferenciaOut(BaseModel):
     cuenta_origen_id: int
     cuenta_destino_id: int
     monto: float
+    comision: float
     concepto: str | None
     notas: str | None
     created_at: datetime

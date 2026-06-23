@@ -35,9 +35,9 @@ type CobroForm = { cuenta_bancaria_id: string; fecha: string; concepto: string; 
 type EgresoForm = { cuenta_bancaria_id: string; fecha: string; categoria: string; concepto: string; monto: string; metodo_pago: string; referencia: string; notas: string }
 type CxPForm = { proveedor: string; concepto: string; monto_total: string; fecha_emision: string; fecha_vencimiento: string; referencia: string; notas: string }
 type PagoForm = { monto: string; cuenta_bancaria_id: string; fecha: string; metodo_pago: string; referencia: string }
-type TransferenciaForm = { fecha: string; cuenta_origen_id: string; cuenta_destino_id: string; monto: string; concepto: string; notas: string }
+type TransferenciaForm = { fecha: string; cuenta_origen_id: string; cuenta_destino_id: string; monto: string; comision: string; concepto: string; notas: string }
 type NuevaCuentaForm = { nombre: string; tipo: string; saldo_inicial: string }
-interface Transferencia { id: number; numero: string; fecha: string; cuenta_origen_id: number; cuenta_destino_id: number; monto: number; concepto: string | null; created_at: string }
+interface Transferencia { id: number; numero: string; fecha: string; cuenta_origen_id: number; cuenta_destino_id: number; monto: number; comision: number; concepto: string | null; created_at: string }
 
 function fmt(n: number) { return `$${Number(n).toFixed(2)}` }
 
@@ -202,6 +202,7 @@ export default function Cobros() {
     mutationFn: (d: TransferenciaForm) => api.post("/transferencias", {
       fecha: d.fecha, cuenta_origen_id: Number(d.cuenta_origen_id),
       cuenta_destino_id: Number(d.cuenta_destino_id), monto: Number(d.monto),
+      comision: d.comision ? Number(d.comision) : 0,
       concepto: d.concepto || null, notas: d.notas || null,
     }),
     onSuccess: () => {
@@ -768,7 +769,11 @@ export default function Cobros() {
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setDialogEgreso(false)}>Cancelar</Button>
-            <Button type="submit" disabled={egresoMut.isPending}>
+            <Button type="submit" disabled={egresoMut.isPending || (() => {
+              const cuenta = cuentas.find(c => c.id === Number(watchE("cuenta_bancaria_id")))
+              const m = parseFloat(watchE("monto") || "0")
+              return !!cuenta && m > 0 && cuenta.saldo_actual < m
+            })()}>
               {egresoMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Registrar
             </Button>
           </DialogFooter>
@@ -940,9 +945,15 @@ export default function Cobros() {
                 {cuentas.map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
               </select>
             </div>
-            <div className="space-y-1">
-              <Label>Monto ($) *</Label>
-              <Input type="number" step="0.01" min="0.01" {...rTrf("monto", { required: true })} />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Monto ($) *</Label>
+                <Input type="number" step="0.01" min="0.01" {...rTrf("monto", { required: true })} />
+              </div>
+              <div className="space-y-1">
+                <Label>Comisión bancaria ($)</Label>
+                <Input type="number" step="0.01" min="0" placeholder="0.00" {...rTrf("comision")} />
+              </div>
             </div>
             <SaldoAviso cuentaId={watchTrf("cuenta_origen_id")} monto={watchTrf("monto")} />
             <div className="space-y-1">

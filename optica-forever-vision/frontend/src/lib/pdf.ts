@@ -21,7 +21,15 @@ export const MARCA_LOGO = `
 const PIN_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`
 const PHONE_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2.23h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l.81-.81a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 17z"/></svg>`
 
-export const MARCA_FOOTER = `
+export function getMarcaFooter(logo?: string | null): string {
+  const rightLogo = logo
+    ? `<img src="${logo}" style="height:36px;width:auto;max-width:120px;object-fit:contain;" />`
+    : `${EYE_SVG.replace('width="46" height="46"', 'width="32" height="32"')}
+       <div style="margin-left:8px;line-height:1.2">
+         <div style="font-family:Georgia,serif;font-style:italic;font-size:9px;color:#64748b;letter-spacing:1px">Óptica</div>
+         <div style="font-family:Arial,sans-serif;font-weight:800;font-size:10px;color:#0891b2;letter-spacing:2px">FOREVER VISION</div>
+       </div>`
+  return `
 <div style="display:flex;align-items:stretch;justify-content:space-between;background:#f0f9ff;border-top:2px solid #0891b2;margin-top:20px;font-family:Arial,sans-serif">
   <div style="display:flex;align-items:center;gap:6px;padding:8px 16px;flex:1">
     <div style="margin-right:12px">
@@ -36,13 +44,13 @@ export const MARCA_FOOTER = `
     </div>
   </div>
   <div style="display:flex;align-items:center;padding:8px 16px;background:#e0f2fe;border-left:1px solid #bae6fd">
-    ${EYE_SVG.replace('width="46" height="46"', 'width="32" height="32"')}
-    <div style="margin-left:8px;line-height:1.2">
-      <div style="font-family:Georgia,serif;font-style:italic;font-size:9px;color:#64748b;letter-spacing:1px">Óptica</div>
-      <div style="font-family:Arial,sans-serif;font-weight:800;font-size:10px;color:#0891b2;letter-spacing:2px">FOREVER VISION</div>
-    </div>
+    ${rightLogo}
   </div>
 </div>`
+}
+
+// Backwards compat — uses SVG fallback (no custom logo)
+export const MARCA_FOOTER = getMarcaFooter(null)
 
 export const PDF_BASE_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
@@ -82,11 +90,63 @@ export const PDF_BASE_CSS = `
   @media print{body{padding:8px}}
 `
 
+const PRINT_WIN_NAME = "optica_print_window"
+
 export function openPrintWindow(html: string, width = 860, height = 960) {
-  const w = window.open("", "_blank", `width=${width},height=${height}`)
+  // Reuse the same named window so repeated prints don't pile up
+  let w = window.open("", PRINT_WIN_NAME, `width=${width},height=${height}`)
   if (!w) return
+  w.document.open()
   w.document.write(html)
   w.document.close()
+  w.focus()
+}
+
+/**
+ * Renders `html` in a hidden off-screen div, captures with html2canvas,
+ * converts to PDF with jsPDF, and triggers a browser download.
+ * Returns the PDF blob so callers can also upload/share it.
+ */
+export async function downloadHtmlAsPdf(html: string, filename: string): Promise<Blob> {
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+    import("jspdf"),
+    import("html2canvas"),
+  ])
+
+  // Render in a hidden div at fixed width so layout matches print
+  const wrapper = document.createElement("div")
+  wrapper.style.cssText = "position:fixed;left:-9999px;top:0;width:860px;background:#fff;z-index:-1"
+  // Strip auto-print scripts to avoid popups
+  wrapper.innerHTML = html.replace(/<script[\s\S]*?<\/script>/gi, "")
+  document.body.appendChild(wrapper)
+
+  try {
+    const canvas = await html2canvas(wrapper, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      windowWidth: 860,
+    })
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.92)
+    const imgW = 210 // A4 width in mm
+    const imgH = (canvas.height * imgW) / canvas.width
+
+    const pdf = new jsPDF({ orientation: imgH > imgW ? "p" : "l", unit: "mm", format: [imgW, imgH] })
+    pdf.addImage(imgData, "JPEG", 0, 0, imgW, imgH)
+
+    const blob = pdf.output("blob")
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+    return blob
+  } finally {
+    document.body.removeChild(wrapper)
+  }
 }
 
 export function getMarcaLogo(logoBase64?: string | null): string {

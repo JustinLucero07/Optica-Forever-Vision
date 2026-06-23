@@ -84,6 +84,7 @@ class Transferencia(Base):
         ForeignKey("cuentas_bancarias.id", ondelete="RESTRICT"), nullable=False
     )
     monto: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    comision: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     concepto: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     usuario_id: Mapped[int] = mapped_column(

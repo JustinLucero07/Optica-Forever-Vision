@@ -356,8 +356,9 @@ def crear_transferencia(
     ).scalar_one_or_none()
     if not origen:
         raise HTTPException(status_code=404, detail="Cuenta origen no encontrada")
-    if float(origen.saldo_actual) < data.monto:
-        raise HTTPException(status_code=422, detail=f"Saldo insuficiente en {origen.nombre} (${float(origen.saldo_actual):.2f})")
+    total_debito = data.monto + (data.comision or 0)
+    if float(origen.saldo_actual) < total_debito:
+        raise HTTPException(status_code=422, detail=f"Saldo insuficiente en {origen.nombre}: necesitas ${total_debito:.2f} (${float(origen.saldo_actual):.2f} disponible)")
 
     destino = db.execute(
         select(CuentaBancaria).where(CuentaBancaria.id == data.cuenta_destino_id).with_for_update()
@@ -369,8 +370,22 @@ def crear_transferencia(
     t = Transferencia(numero=numero, usuario_id=current.id, **data.model_dump())
     db.add(t)
 
-    origen.saldo_actual = float(origen.saldo_actual) - data.monto
+    origen.saldo_actual = float(origen.saldo_actual) - data.monto - data.comision
     destino.saldo_actual = float(destino.saldo_actual) + data.monto
+
+    if data.comision > 0:
+        num_eg = siguiente_numero(db, "numerador_egreso", "EG")
+        egreso = Egreso(
+            numero=num_eg,
+            cuenta_bancaria_id=data.cuenta_origen_id,
+            fecha=data.fecha,
+            categoria="Comisión bancaria",
+            concepto=f"Comisión transferencia {numero}" + (f" — {data.concepto}" if data.concepto else ""),
+            monto=data.comision,
+            metodo_pago="transferencia",
+            usuario_id=current.id,
+        )
+        db.add(egreso)
 
     db.commit()
     db.refresh(t)

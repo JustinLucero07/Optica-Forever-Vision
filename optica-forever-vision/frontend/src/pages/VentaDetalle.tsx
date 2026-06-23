@@ -1,12 +1,17 @@
+import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Loader2, Printer } from "lucide-react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { ArrowLeft, Loader2, Printer, DollarSign } from "lucide-react"
+import { toast } from "sonner"
 
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { MARCA_FOOTER, PDF_BASE_CSS, openPrintWindow, getMarcaLogo } from "@/lib/pdf"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { getMarcaFooter, PDF_BASE_CSS, openPrintWindow, getMarcaLogo } from "@/lib/pdf"
 
 function fmtDate(s: string) {
   const [y, m, d] = s.slice(0, 10).split("-")
@@ -26,77 +31,82 @@ interface Paciente {
   id: number; nombres: string; apellidos: string; cedula: string
   telefono: string | null; email: string | null; direccion: string | null
 }
-interface Cobro { id: number; monto: number }
+interface Cobro { id: number; monto: number; metodo_pago?: string; fecha?: string }
+interface CuentaBancaria { id: number; nombre: string; saldo_actual: number }
 
 async function printComprobante(v: Venta, pac: Paciente | null, abonado: number) {
   const logo = (await import("@/store/brand")).useBrandStore.getState().logo
   const pendiente = Math.max(0, Number(v.total) - abonado)
   const nombre = pac ? `${pac.apellidos} ${pac.nombres}` : "—"
   const cedula = pac?.cedula ?? "—"
-  const tel = pac?.telefono ?? "—"
-  const dir = pac?.direccion ?? "—"
-  const mail = pac?.email ?? "—"
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Comprobante ${v.numero}</title>
+<style>${PDF_BASE_CSS}
+  .brand-hdr{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 20px 16px;border-bottom:1px solid #e5e7eb;margin-bottom:20px}
+  .firma-section{display:flex;justify-content:center;gap:60px;margin-top:36px}
+  .firma-box{text-align:center;width:200px}
+  .firma-line{border-top:1px solid #374151;margin:0 auto 4px;width:88%}
+  .firma-sub{font-size:9px;color:#6b7280}
+</style>
+</head><body>
+<div class="brand-hdr">
+  ${getMarcaLogo(logo)}
+  <div style="text-align:right">
+    <div style="font-size:18px;font-weight:800;color:#0891b2">COMPROBANTE DE VENTA</div>
+    <div style="font-size:13px;font-weight:700">${v.numero}</div>
+    <div style="font-size:11px;color:#6b7280">${fmtDate(v.fecha)}</div>
+  </div>
+</div>
 
-  const filas = v.items.map(it => `
-    <tr>
-      <td>${it.descripcion}</td>
-      <td class="c">${it.cantidad}</td>
-      <td class="r">$${Number(it.precio_unitario).toFixed(2)}</td>
-      <td class="c">${it.descuento_pct > 0 ? it.descuento_pct + "%" : "—"}</td>
-      <td class="r" style="font-weight:600">$${Number(it.subtotal).toFixed(2)}</td>
-    </tr>`).join("")
-
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>Comprobante ${v.numero}</title>
-  <style>
-    ${PDF_BASE_CSS}
-    td.r{text-align:right} td.c{text-align:center}
-    .totales-box{padding:12px 20px;display:flex;flex-direction:column;align-items:flex-end;gap:3px;border-top:1px solid #e5e7eb}
-  </style></head><body>
-  <div class="doc-hdr">
-    <div class="doc-hdr-left">
-      ${getMarcaLogo(logo)}
-      <div class="doc-hdr-title">Comprobante de Venta</div>
-    </div>
-    <div class="doc-hdr-right">
-      <div class="num">${v.numero}</div>
-      <div class="fecha">Fecha: ${fmtDate(v.fecha)}</div>
-      <div class="fecha" style="margin-top:2px">Estado: <strong>${v.estado.toUpperCase()}</strong></div>
+<div class="doc-body">
+  <div class="doc-section">
+    <div class="doc-section-title">Datos del cliente</div>
+    <div class="doc-grid">
+      <span class="lbl">Nombre</span><span class="val">${nombre}</span>
+      <span class="lbl">Cédula</span><span class="val">${cedula}</span>
+      ${pac?.telefono ? `<span class="lbl">Teléfono</span><span class="val">${pac.telefono}</span>` : ""}
     </div>
   </div>
-  <div class="doc-body">
-    <div class="doc-section">
-      <div class="doc-section-title">Datos del Comprador</div>
-      <div class="doc-grid">
-        <span class="lbl">Nombre</span><span class="val"><strong>${nombre}</strong></span>
-        <span class="lbl">Cédula</span><span class="val">${cedula}</span>
-        <span class="lbl">Teléfono</span><span class="val">${tel}</span>
-        <span class="lbl">Dirección</span><span class="val">${dir}</span>
-        ${mail !== "—" ? `<span class="lbl">Correo</span><span class="val">${mail}</span>` : ""}
-        ${v.notas ? `<span class="lbl">Observaciones</span><span class="val">${v.notas}</span>` : ""}
-      </div>
-    </div>
+
+  <div class="doc-section">
+    <div class="doc-section-title">Detalle</div>
     <table class="items">
       <thead><tr>
-        <th>Descripción</th>
-        <th class="c" style="width:55px">Cant.</th>
-        <th class="r" style="width:85px">P. Unit.</th>
-        <th class="c" style="width:65px">Desc.%</th>
-        <th class="r" style="width:85px">Subtotal</th>
+        <th>Descripción</th><th class="c">Cant.</th><th class="r">P.Unit.</th><th class="r">Desc.%</th><th class="r">Subtotal</th>
       </tr></thead>
-      <tbody>${filas}</tbody>
+      <tbody>
+        ${v.items.map(it => `<tr>
+          <td>${it.descripcion}</td>
+          <td style="text-align:center">${it.cantidad}</td>
+          <td style="text-align:right">$${Number(it.precio_unitario).toFixed(2)}</td>
+          <td style="text-align:right">${it.descuento_pct > 0 ? it.descuento_pct + "%" : "—"}</td>
+          <td style="text-align:right;font-weight:600">$${Number(it.subtotal).toFixed(2)}</td>
+        </tr>`).join("")}
+      </tbody>
     </table>
-    <div class="totales-box">
-      <div class="t-row" style="min-width:280px"><span>Subtotal:</span><span>$${Number(v.subtotal).toFixed(2)}</span></div>
-      ${Number(v.descuento) > 0 ? `<div class="t-row" style="min-width:280px;color:#dc2626"><span>Descuento:</span><span>-$${Number(v.descuento).toFixed(2)}</span></div>` : ""}
-      <div class="t-row big" style="min-width:280px"><span>TOTAL:</span><span>$${Number(v.total).toFixed(2)}</span></div>
-      <div class="t-row" style="min-width:280px;color:#16a34a"><span>Abonado:</span><span>$${abonado.toFixed(2)}</span></div>
-      ${pendiente > 0 ? `<div class="t-row" style="min-width:280px;color:#dc2626"><span>Saldo Pendiente:</span><span>$${pendiente.toFixed(2)}</span></div>` : ""}
-    </div>
   </div>
-  ${MARCA_FOOTER}
-  <script>window.print();window.onafterprint=()=>window.close();</script>
-  </body></html>`
+
+  <div class="totales">
+    <div class="t-row"><span>Subtotal</span><span>$${Number(v.subtotal).toFixed(2)}</span></div>
+    ${Number(v.descuento) > 0 ? `<div class="t-row" style="color:#d97706"><span>Descuento</span><span>-$${Number(v.descuento).toFixed(2)}</span></div>` : ""}
+    <div class="t-row big"><span>Total</span><span>$${Number(v.total).toFixed(2)}</span></div>
+    ${abonado > 0 ? `<div class="t-row" style="color:#16a34a"><span>Pagado</span><span>$${abonado.toFixed(2)}</span></div>` : ""}
+    ${pendiente > 0.01 ? `<div class="t-row" style="color:#dc2626;font-weight:700"><span>Saldo pendiente</span><span>$${pendiente.toFixed(2)}</span></div>` : ""}
+  </div>
+</div>
+
+<div class="firma-section">
+  <div class="firma-box">
+    <div class="firma-line"></div>
+    <div class="firma-sub">Firma del cliente</div>
+  </div>
+  <div class="firma-box">
+    <div class="firma-line"></div>
+    <div class="firma-sub">Responsable / Óptica</div>
+  </div>
+</div>
+
+${getMarcaFooter(logo)}
+<script>window.onload=()=>window.print()</script></body></html>`
 
   openPrintWindow(html, 860, 960)
 }
@@ -109,6 +119,13 @@ function EstadoBadge({ estado }: { estado: string }) {
 export default function VentaDetalle() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const qc = useQueryClient()
+
+  const [cobroMonto, setCobroMonto] = useState("")
+  const [cobroMetodo, setCobroMetodo] = useState("efectivo")
+  const [cobroCuenta, setCobroCuenta] = useState("")
+  const [cobroRef, setCobroRef] = useState("")
+  const [showCobroForm, setShowCobroForm] = useState(false)
 
   const { data: v, isLoading } = useQuery<Venta>({
     queryKey: ["venta", id],
@@ -121,10 +138,53 @@ export default function VentaDetalle() {
     enabled: !!v?.paciente_id,
   })
 
-  const { data: cobros = [] } = useQuery<Cobro[]>({
+  const { data: cobros = [], refetch: refetchCobros } = useQuery<Cobro[]>({
     queryKey: ["cobros-venta", id],
     queryFn: () => api.get("/cobros", { params: { venta_id: Number(id), limit: 100 } }).then(r => r.data),
     enabled: !!id,
+  })
+
+  const { data: cuentas = [] } = useQuery<CuentaBancaria[]>({
+    queryKey: ["cuentas-bancarias"],
+    queryFn: () => api.get("/cuentas-bancarias").then(r => r.data),
+    staleTime: 60_000,
+  })
+
+  const cobroMut = useMutation({
+    mutationFn: () => api.post("/cobros", {
+      venta_id: Number(id),
+      cuenta_bancaria_id: Number(cobroCuenta) || null,
+      fecha: new Date().toISOString().slice(0, 10),
+      concepto: `Cobro venta ${v?.numero}`,
+      monto: Number(cobroMonto),
+      metodo_pago: cobroMetodo,
+      referencia: cobroRef || null,
+    }),
+    onMutate: async () => {
+      // Optimistic: agrega el cobro a la lista local de inmediato
+      await qc.cancelQueries({ queryKey: ["cobros-venta", id] })
+      const prev = qc.getQueryData<Cobro[]>(["cobros-venta", id]) ?? []
+      const optimistic: Cobro = {
+        id: -Date.now(),
+        monto: Number(cobroMonto),
+        metodo_pago: cobroMetodo,
+        fecha: new Date().toISOString().slice(0, 10),
+      }
+      qc.setQueryData<Cobro[]>(["cobros-venta", id], [...prev, optimistic])
+      return { prev }
+    },
+    onSuccess: () => {
+      toast.success("Cobro registrado")
+      refetchCobros()
+      qc.invalidateQueries({ queryKey: ["venta", id] })
+      setShowCobroForm(false)
+      setCobroRef("")
+    },
+    onError: (e, _vars, ctx) => {
+      // Revert optimistic update
+      if (ctx?.prev) qc.setQueryData(["cobros-venta", id], ctx.prev)
+      toast.error(errMsg(e, "Error al registrar cobro"))
+    },
   })
 
   if (isLoading) return (
@@ -159,6 +219,93 @@ export default function VentaDetalle() {
           <Printer className="h-4 w-4 mr-1" /> Comprobante
         </Button>
       </div>
+
+      {/* ── Alerta de cobro pendiente ── */}
+      {pendiente > 0.01 && (
+        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-amber-600" />
+              <span className="font-semibold text-amber-800 dark:text-amber-300">
+                Saldo pendiente: ${pendiente.toFixed(2)}
+              </span>
+            </div>
+            <Button
+              size="sm"
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={() => {
+                setCobroMonto(pendiente.toFixed(2))
+                if (cuentas.length === 1) setCobroCuenta(String(cuentas[0].id))
+                setShowCobroForm(f => !f)
+              }}
+            >
+              <DollarSign className="h-4 w-4 mr-1" />
+              {showCobroForm ? "Cancelar" : "Registrar cobro"}
+            </Button>
+          </div>
+
+          {showCobroForm && (
+            <div className="bg-white dark:bg-card rounded-lg p-4 border space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Monto</Label>
+                  <Input
+                    type="number" min="0.01" step="0.01"
+                    value={cobroMonto}
+                    onChange={e => setCobroMonto(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Método</Label>
+                  <select
+                    value={cobroMetodo}
+                    onChange={e => setCobroMetodo(e.target.value)}
+                    className="h-8 w-full rounded-md border text-sm px-2 bg-background"
+                  >
+                    <option value="efectivo">Efectivo</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="cheque">Cheque</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Cuenta</Label>
+                  <select
+                    value={cobroCuenta}
+                    onChange={e => setCobroCuenta(e.target.value)}
+                    className="h-8 w-full rounded-md border text-sm px-2 bg-background"
+                  >
+                    <option value="">— selecciona —</option>
+                    {cuentas.map(c => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Referencia (opcional)</Label>
+                  <Input
+                    placeholder="Nro. transacción"
+                    value={cobroRef}
+                    onChange={e => setCobroRef(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  disabled={!cobroMonto || !cobroCuenta || cobroMut.isPending}
+                  onClick={() => cobroMut.mutate()}
+                >
+                  {cobroMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <DollarSign className="h-4 w-4 mr-1" />}
+                  Confirmar cobro
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <Card>
         <CardHeader><CardTitle className="text-sm">Detalle de ítems</CardTitle></CardHeader>
@@ -214,6 +361,32 @@ export default function VentaDetalle() {
           )}
         </div>
       </div>
+
+      {cobros.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Cobros registrados</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left px-4 py-2 font-medium">Fecha</th>
+                  <th className="text-left px-4 py-2 font-medium">Método</th>
+                  <th className="text-right px-4 py-2 font-medium">Monto</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {cobros.map(co => (
+                  <tr key={co.id}>
+                    <td className="px-4 py-2">{co.fecha ? fmtDate(co.fecha) : "—"}</td>
+                    <td className="px-4 py-2 capitalize">{co.metodo_pago ?? "—"}</td>
+                    <td className="px-4 py-2 text-right font-medium text-green-700">${Number(co.monto).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       {v.notas && (
         <p className="text-sm text-muted-foreground">

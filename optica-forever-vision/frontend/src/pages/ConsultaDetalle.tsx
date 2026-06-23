@@ -1,14 +1,14 @@
 import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Pencil, Loader2, Printer, Copy, CalendarPlus } from "lucide-react"
+import { ArrowLeft, Pencil, Loader2, Printer, Copy, CalendarPlus, FlaskConical, ShoppingCart } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useAuthStore } from "@/store/auth"
-import { getMarcaLogo, MARCA_FOOTER } from "@/lib/pdf"
+import { getMarcaLogo, getMarcaFooter } from "@/lib/pdf"
 import { useBrandStore } from "@/store/brand"
 
 function Fila({ label, valor }: { label: string; valor: string | number | boolean | null | undefined }) {
@@ -204,7 +204,7 @@ function printCertificado(c: ConsultaData, paciente: PacienteData | undefined, c
     </div>
   </div>
 
-  ${MARCA_FOOTER}
+  ${getMarcaFooter(logo)}
   <script>window.onload=()=>window.print()</script></body></html>`
 
   const w = window.open("", "_blank", "width=700,height=900")
@@ -284,6 +284,26 @@ export default function ConsultaDetalle() {
             title="Agendar cita de control para este paciente"
             onClick={() => navigate("/turnos", { state: { fromConsulta: { paciente_id: c.paciente_id, motivo: "Control visual", fecha: c.proximo_control ?? "" } } })}>
             <CalendarPlus className="h-4 w-4 mr-1" /> Agendar control
+          </Button>
+          <Button
+            size="sm"
+            className="bg-cyan-600 hover:bg-cyan-700 text-white"
+            title="Crear orden de laboratorio con la prescripción de esta consulta"
+            onClick={() => navigate("/ordenes", { state: { fromConsulta: {
+              paciente_id: c.paciente_id,
+              consulta_id: c.id,
+              od: { esf: c.rx_od_esf, cil: c.rx_od_cil, eje: c.rx_od_eje, add: c.rx_od_add },
+              oi: { esf: c.rx_oi_esf, cil: c.rx_oi_cil, eje: c.rx_oi_eje, add: c.rx_oi_add },
+              diagnostico: c.diagnostico,
+            } } })}>
+            <FlaskConical className="h-4 w-4 mr-1" /> Crear orden lab
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            title="Crear venta directa para este paciente"
+            onClick={() => navigate("/ventas/nueva", { state: { paciente_id: c.paciente_id } })}>
+            <ShoppingCart className="h-4 w-4 mr-1" /> Facturar
           </Button>
           {(rol === "admin" || rol === "optometrista") && (
             <>

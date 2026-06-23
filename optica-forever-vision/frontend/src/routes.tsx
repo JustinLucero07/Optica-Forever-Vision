@@ -23,6 +23,7 @@ import Configuracion from "@/pages/Configuracion"
 import SRIImport from "@/pages/SRIImport"
 import Proveedores from "@/pages/Proveedores"
 import Presupuestos from "@/pages/Presupuestos"
+import Proformas from "@/pages/Proformas"
 import CajaDiariaPage from "@/pages/CajaDiaria"
 import Sueldos from "@/pages/Sueldos"
 import { useAuthStore } from "@/store/auth"
@@ -78,6 +79,7 @@ export const router = createBrowserRouter([
           { path: "creditos", element: <Creditos /> },
           { path: "cxc", element: <CuentasPorCobrar /> },
           { path: "consultas", element: <Consultas /> },
+          { path: "proformas", element: <Proformas /> },
           { path: "presupuestos", element: <Presupuestos /> },
           { path: "reportes", element: <Reportes /> },
           { path: "usuarios", element: <Usuarios /> },

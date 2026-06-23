@@ -27,12 +27,15 @@ interface Control { paciente_id: number; nombres: string; apellidos: string; tel
 interface TurnoHoy { id: number; paciente_id: number; nombres: string; apellidos: string; telefono: string | null; hora_inicio: string; hora_fin: string | null; motivo: string }
 interface CuotaProxima { paciente_id: number | null; nombres: string; apellidos: string; telefono: string | null; credito_numero: string; numero_cuota: number; total_cuotas: number; monto: number; fecha_vencimiento: string; dias_para: number }
 interface OrdenSinRetirar { id: number; numero: string; paciente_id: number; nombres: string; apellidos: string; telefono: string | null; dias_esperando: number }
+interface ProductoSinStock { id: number; nombre: string; stock_actual: number }
+
 interface AlertasData {
   cumpleanos_proximos: Cumpleano[]
   controles_proximos: Control[]
   turnos_hoy: TurnoHoy[]
   cuotas_proximas: CuotaProxima[]
   ordenes_sin_retirar: OrdenSinRetirar[]
+  productos_sin_stock: ProductoSinStock[]
 }
 
 interface KPIs {
@@ -286,12 +289,16 @@ export default function Dashboard() {
     queryKey: ["dashboard-kpis"],
     queryFn: () => api.get("/reportes/dashboard").then(r => r.data),
     refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   })
 
   const { data: cajaHoy } = useQuery<{ ingresos: number; egresos: number; neto: number }>({
     queryKey: ["stats-caja-hoy"],
     queryFn: () => api.get("/stats/caja-hoy").then(r => r.data),
     refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   })
 
   const { data: analytics } = useQuery<any>({
@@ -305,13 +312,15 @@ export default function Dashboard() {
     queryKey: ["dashboard-alertas"],
     queryFn: () => api.get("/reportes/alertas").then(r => r.data),
     refetchInterval: 300_000,
-    staleTime: 120_000,
+    refetchOnWindowFocus: true,
+    staleTime: 60_000,
   })
 
   const { data: ordenesKanban = [] } = useQuery<OrdenKanban[]>({
     queryKey: ["ordenes-dashboard"],
     queryFn: () => api.get("/ordenes", { params: { limit: 100 } }).then(r => r.data),
-    staleTime: 120_000,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   })
 
   const gridColor = dark ? "#ffffff0f" : "#0000000d"
@@ -611,6 +620,26 @@ export default function Dashboard() {
                         <PacLink id={o.paciente_id}>{o.apellidos} {o.nombres}</PacLink>
                         <span className="text-muted-foreground shrink-0">{o.numero}</span>
                         <WaBtn disabled={!o.telefono} onClick={() => enviarOrdenLista(o.telefono, o.nombres, o.numero)} />
+                      </AlertRow>
+                    ))}
+                  </div>
+                </AlertPanel>
+              )}
+
+              {/* Fila 4: Productos sin stock */}
+              {alertas.productos_sin_stock?.length > 0 && (
+                <AlertPanel title="Productos agotados (stock = 0)" icon={Package} color="#dc2626"
+                  count={alertas.productos_sin_stock.length} emptyMsg="">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                    {alertas.productos_sin_stock.map(p => (
+                      <AlertRow key={p.id}>
+                        <span className="font-semibold text-destructive shrink-0">✗</span>
+                        <button
+                          className="text-left truncate hover:text-primary hover:underline underline-offset-2 text-sm"
+                          onClick={() => navigate("/inventario")}
+                        >
+                          {p.nombre}
+                        </button>
                       </AlertRow>
                     ))}
                   </div>

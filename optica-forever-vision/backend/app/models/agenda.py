@@ -51,6 +51,9 @@ class OrdenTrabajo(Base):
     proveedor_id: Mapped[int | None] = mapped_column(
         ForeignKey("proveedores.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    producto_id: Mapped[int | None] = mapped_column(
+        ForeignKey("productos.id", ondelete="SET NULL"), nullable=True
+    )
     lab_proveedor: Mapped[str] = mapped_column(String(150), nullable=False)
     lab_telefono: Mapped[str | None] = mapped_column(String(30), nullable=True)
     fecha_envio: Mapped[date] = mapped_column(Date, nullable=False)
@@ -60,6 +63,11 @@ class OrdenTrabajo(Base):
     tipo: Mapped[str] = mapped_column(String(30), nullable=False)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     precio_lab: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    precio_venta: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    armazon_ref: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    armazon_color: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    armazon_talla: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    es_proforma: Mapped[bool] = mapped_column(default=False, nullable=False)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()

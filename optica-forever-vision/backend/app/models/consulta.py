@@ -73,6 +73,9 @@ class Consulta(Base):
     fondo_od: Mapped[str | None] = mapped_column(Text, nullable=True)
     fondo_oi: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Tests adicionales
+    test_colores: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     # Conclusión
     diag_od: Mapped[str | None] = mapped_column(String(255), nullable=True)
     diag_oi: Mapped[str | None] = mapped_column(String(255), nullable=True)

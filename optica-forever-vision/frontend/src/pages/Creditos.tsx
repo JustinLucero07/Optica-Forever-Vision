@@ -8,7 +8,7 @@ import { Plus, Loader2, CreditCard, ChevronDown, ChevronUp, Printer, UserCheck }
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
-import { MARCA_FOOTER, PDF_BASE_CSS, openPrintWindow, getMarcaLogo } from "@/lib/pdf"
+import { getMarcaFooter, PDF_BASE_CSS, openPrintWindow, getMarcaLogo } from "@/lib/pdf"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -90,7 +90,7 @@ async function printComprobante(credito: Credito, cuota: Cuota, firma = "") {
     </div>
   </div>
 </div>
-${MARCA_FOOTER}
+${getMarcaFooter(logo)}
 <script>window.onload=()=>window.print()</script>
 </body></html>`
   openPrintWindow(html, 520, 700)
@@ -160,7 +160,7 @@ async function printAceptacionCredito(credito: Credito, productos: string, firma
     </div>
   </div>
 </div>
-${MARCA_FOOTER}
+${getMarcaFooter(logo)}
 <script>window.onload=()=>window.print()</script>
 </body></html>`
   openPrintWindow(html, 720, 960)
@@ -220,7 +220,7 @@ export default function Creditos() {
 
 
   const { register: rN, handleSubmit: hsN, reset: resetN, setValue: svN, watch: wN } = useForm<CreditoForm>()
-  const { register: rP, handleSubmit: hsP, reset: resetP } = useForm<PagoForm>()
+  const { register: rP, handleSubmit: hsP, reset: resetP, watch: watchP } = useForm<PagoForm>()
 
   const crearMut = useMutation({
     mutationFn: (d: CreditoForm) => api.post("/creditos", {
@@ -617,7 +617,12 @@ export default function Creditos() {
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setPagandoCuota(null)}>Cancelar</Button>
-            <Button type="submit" disabled={pagarMut.isPending}>
+            <Button type="submit" disabled={pagarMut.isPending || (() => {
+              if (!pagandoCuota) return false
+              const saldoCuota = Number(pagandoCuota.cuota.monto) - Number(pagandoCuota.cuota.monto_pagado)
+              const m = parseFloat(watchP("monto") || "0")
+              return m <= 0 || m > saldoCuota
+            })()}>
               {pagarMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Confirmar pago
             </Button>
           </DialogFooter>

@@ -1,16 +1,17 @@
-import { useState, useMemo, useRef, useEffect } from "react"
+import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
-import { useLocation } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { Paginador } from "@/components/ui/Paginador"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Plus, Loader2, Printer, ChevronDown, MessageCircle, Send, Trash2, PlusCircle, Tag, LayoutGrid, List } from "lucide-react"
+import { Plus, Loader2, Printer, ChevronDown, MessageCircle, Send, Trash2, PlusCircle, Tag, LayoutGrid, List, Zap } from "lucide-react"
 import { enviarOrdenLista } from "@/lib/whatsapp"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
-import { MARCA_FOOTER, PDF_BASE_CSS, openPrintWindow, getMarcaLogo } from "@/lib/pdf"
+import { getMarcaFooter, PDF_BASE_CSS, openPrintWindow, getMarcaLogo, downloadHtmlAsPdf } from "@/lib/pdf"
+import { parsePrescripcion } from "@/lib/rx"
 import { useBrandStore } from "@/store/brand"
 
 function toISO(d: Date) { return d.toISOString().slice(0, 10) }
@@ -136,6 +137,11 @@ const EMPTY_FORM = {
   tipo: "Lentes monofocales",
   fecha_envio: toISO(new Date()),
   notas: "",
+  armazon_ref: "",
+  armazon_color: "",
+  armazon_talla: "",
+  precio_venta: "",
+  es_proforma: false,
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -191,34 +197,6 @@ function EstadoDropdownPortal({ anchorEl, open, onClose, estados, current, onSel
   )
 }
 
-function parsePrescripcion(desc: string) {
-  const lines = desc.split("\n").map(l => l.trim()).filter(Boolean)
-  const get = (prefix: string) => {
-    const line = lines.find(l => l.toLowerCase().startsWith(prefix.toLowerCase()))
-    if (!line) return ""
-    const ci = line.indexOf(":")
-    return ci >= 0 ? line.slice(ci + 1).trim() : ""
-  }
-  const parseOjo = (text: string) => ({
-    esf: text.match(/esf[\s:]+([+-]?\d+(?:[.,]\d+)?)/i)?.[1] ?? "",
-    cil: text.match(/cil[\s:]+([+-]?\d+(?:[.,]\d+)?)/i)?.[1] ?? "",
-    eje: text.match(/eje[\s:]+(\d+)/i)?.[1] ?? "",
-    add: text.match(/add[\s:]+([+-]?\d+(?:[.,]\d+)?)/i)?.[1] ?? "",
-    prisma: text.match(/prisma[\s:]+(\S+)/i)?.[1] ?? "",
-    dnp: text.match(/dnp[\s:]+(\d+(?:[.,]\d+)?)/i)?.[1] ?? "",
-    dp: text.match(/\bdp[\s:]+(\d+(?:[.,]\d+)?)/i)?.[1] ?? "",
-  })
-  return {
-    od: parseOjo(get("OD")),
-    oi: parseOjo(get("OI")),
-    dp: get("DP").replace(/mm/i, "").trim(),
-    material: get("Material"),
-    tratamiento: get("Tratamiento"),
-    diseno: get("Diseño"),
-    diagnostico: get("Diagnóstico") || get("Diagnostico"),
-    recomendaciones: get("Recomendaciones"),
-  }
-}
 
 function rxToDesc(rx: RxForm): string {
   const fmtOjo = (label: string, o: RxOjo) => {
@@ -254,11 +232,18 @@ function descToRx(desc: string): RxForm {
 }
 
 // ─── PDF: Orden para lab ──────────────────────────────────────────────────────
-function printOrden(orden: Orden, pacNombre: string, logo?: string | null) {
+function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, forPrint = false): string {
   const rx = parsePrescripcion(orden.descripcion)
+  const fmtRxVal = (v: string) => {
+    if (!v) return "—"
+    const n = Number(v.replace(",", "."))
+    if (isNaN(n)) return v
+    return (n >= 0 ? "+" : "") + n.toFixed(2)
+  }
   const c = (v: string) => `<td>${v || "—"}</td>`
+  const cr = (v: string) => `<td>${fmtRxVal(v)}</td>`
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>Orden ${orden.numero}</title>
   <style>
     ${PDF_BASE_CSS}
@@ -297,12 +282,12 @@ function printOrden(orden: Orden, pacNombre: string, logo?: string | null) {
         <tbody>
           <tr>
             <td class="eye">OD</td>
-            ${c(rx.od.esf)}${c(rx.od.cil)}${c(rx.od.eje)}${c(rx.od.add)}
+            ${cr(rx.od.esf)}${cr(rx.od.cil)}${c(rx.od.eje)}${cr(rx.od.add)}
             ${c(rx.od.prisma)}${c(rx.od.dnp)}${c(rx.od.dp || rx.dp)}
           </tr>
           <tr>
             <td class="eye">OI</td>
-            ${c(rx.oi.esf)}${c(rx.oi.cil)}${c(rx.oi.eje)}${c(rx.oi.add)}
+            ${cr(rx.oi.esf)}${cr(rx.oi.cil)}${c(rx.oi.eje)}${cr(rx.oi.add)}
             ${c(rx.oi.prisma)}${c(rx.oi.dnp)}${c(rx.oi.dp || rx.dp)}
           </tr>
         </tbody>
@@ -324,11 +309,13 @@ function printOrden(orden: Orden, pacNombre: string, logo?: string | null) {
       </div>
     </div>
   </div>
-  ${MARCA_FOOTER}
-  <script>window.print();window.onafterprint=()=>window.close();</script>
+  ${getMarcaFooter(logo)}
+  ${forPrint ? "<script>window.print();window.onafterprint=()=>window.close();</script>" : ""}
   </body></html>`
+}
 
-  openPrintWindow(html, 820, 900)
+function printOrden(orden: Orden, pacNombre: string, logo?: string | null) {
+  openPrintWindow(buildOrdenHtml(orden, pacNombre, logo, true), 820, 900)
 }
 
 // ─── PDF: Etiqueta de lente ───────────────────────────────────────────────────
@@ -375,7 +362,9 @@ function printEtiqueta(orden: Orden, pacNombre: string) {
 // ─── PDF: Aceptación entrega de lentes ───────────────────────────────────────
 function printAceptacion(orden: Orden, pacNombre: string, firma = "", logo?: string | null) {
   const rx = parsePrescripcion(orden.descripcion)
+  const fmtRxVal2 = (v: string) => { const n = Number(v.replace(",",".")); return !v ? "—" : isNaN(n) ? v : (n>=0?"+":"")+n.toFixed(2) }
   const c = (v: string) => `<td>${v || "—"}</td>`
+  const cr = (v: string) => `<td>${fmtRxVal2(v)}</td>`
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>Aceptación ${orden.numero}</title>
@@ -408,8 +397,8 @@ function printAceptacion(orden: Orden, pacNombre: string, firma = "", logo?: str
           <th>ESF</th><th>CYL</th><th>EJE</th><th>ADD</th><th>PRISMA</th><th>DNP</th>
         </tr></thead>
         <tbody>
-          <tr><td class="eye">OD</td>${c(rx.od.esf)}${c(rx.od.cil)}${c(rx.od.eje)}${c(rx.od.add)}${c(rx.od.prisma)}${c(rx.od.dnp || rx.dp)}</tr>
-          <tr><td class="eye">OI</td>${c(rx.oi.esf)}${c(rx.oi.cil)}${c(rx.oi.eje)}${c(rx.oi.add)}${c(rx.oi.prisma)}${c(rx.oi.dnp || rx.dp)}</tr>
+          <tr><td class="eye">OD</td>${cr(rx.od.esf)}${cr(rx.od.cil)}${c(rx.od.eje)}${cr(rx.od.add)}${c(rx.od.prisma)}${c(rx.od.dnp || rx.dp)}</tr>
+          <tr><td class="eye">OI</td>${cr(rx.oi.esf)}${cr(rx.oi.cil)}${c(rx.oi.eje)}${cr(rx.oi.add)}${c(rx.oi.prisma)}${c(rx.oi.dnp || rx.dp)}</tr>
         </tbody>
       </table>
       <div class="doc-grid" style="margin-top:8px">
@@ -436,7 +425,7 @@ function printAceptacion(orden: Orden, pacNombre: string, firma = "", logo?: str
       </div>
     </div>
   </div>
-  ${MARCA_FOOTER}
+  ${getMarcaFooter(logo)}
   <script>window.onload=()=>window.print()</script>
   </body></html>`
 
@@ -500,13 +489,23 @@ function enviarAlLab(orden: Orden, pacNombre: string) {
     `Optica Forever Vision`,
   ].filter(v => v !== "")
 
+  // Abrir WhatsApp con el texto
   window.open(`https://wa.me/${fmtPhone(tel)}?text=${encodeURIComponent(lineas.join("\n"))}`, "_blank")
-  setTimeout(() => printOrden(orden, pacNombre, useBrandStore.getState().logo), 800)
+
+  // Generar y descargar el PDF para adjuntar en el chat
+  const logo = useBrandStore.getState().logo
+  const htmlPdf = buildOrdenHtml(orden, pacNombre, logo)
+  downloadHtmlAsPdf(htmlPdf, `${orden.numero}.pdf`)
+    .then(() => {
+      // toast shown separately so it appears after the download starts
+    })
+    .catch(console.error)
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Ordenes() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [filtroEstado, setFiltroEstado] = useState("")
   const [filtroPaciente, setFiltroPaciente] = useState("")
   const [vistaKanban, setVistaKanban] = useState(false)
@@ -524,28 +523,18 @@ export default function Ordenes() {
   const [saving, setSaving] = useState(false)
   const [estadoDropdown, setEstadoDropdown] = useState<number | null>(null)
   const estadoAnchorRef = useRef<HTMLElement | null>(null)
-  const [potenciaCalc, setPotenciaCalc] = useState("")
   const [consultaSelId, setConsultaSelId] = useState("")
   const [fuenteRx, setFuenteRx] = useState<"refraccion" | "lentes" | "contacto">("refraccion")
   const qc = useQueryClient()
 
   const brandLogo = useBrandStore(s => s.logo)
 
-  const precioEstimado = useMemo(() => {
-    const p = parseFloat(potenciaCalc)
-    if (!p || p <= 0) return null
-    if (p <= 2) return 45
-    if (p <= 4) return 65
-    if (p <= 6) return 85
-    if (p <= 8) return 110
-    return 140
-  }, [potenciaCalc])
-
   const { data: config } = useQuery({
     queryKey: ["configuracion"],
     queryFn: () => api.get("/configuracion").then(r => r.data),
     staleTime: 300_000,
   })
+  const waCloudEnabled = config?.wa_mode === "cloud_api"
 
   const { data: ordenes = [], isLoading } = useQuery<Orden[]>({
     queryKey: ["ordenes", filtroEstado],
@@ -581,6 +570,18 @@ export default function Ordenes() {
       api.patch(`/ordenes/${id}/estado`, null, { params: { estado } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["ordenes"] }); toast.success("Estado actualizado") },
     onError: () => toast.error("Error al actualizar estado"),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/ordenes/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["ordenes"] }); toast.success("Orden eliminada y stock repuesto") },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al eliminar orden"),
+  })
+
+  const waApiMut = useMutation({
+    mutationFn: (id: number) => api.post(`/ordenes/${id}/whatsapp-lab`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["ordenes"] }); toast.success("Orden enviada al lab por WhatsApp ✓") },
+    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error al enviar WhatsApp"),
   })
 
   function pacienteNombre(id: number) {
@@ -639,6 +640,21 @@ export default function Ordenes() {
       setConsultaSelId("")
       setOpenForm(true)
     }
+    const fc = (location.state as any)?.fromConsulta
+    if (fc) {
+      const fmtN = (v: number | null | undefined) => v != null ? String(v) : ""
+      setEditOrden(null)
+      setForm(f => ({ ...f, paciente_id: fc.paciente_id ? String(fc.paciente_id) : "" }))
+      setRx({
+        ...EMPTY_RX,
+        od: { esf: fmtN(fc.od?.esf), cil: fmtN(fc.od?.cil), eje: fmtN(fc.od?.eje), add: fmtN(fc.od?.add), prisma: "", dnp: "" },
+        oi: { esf: fmtN(fc.oi?.esf), cil: fmtN(fc.oi?.cil), eje: fmtN(fc.oi?.eje), add: fmtN(fc.oi?.add), prisma: "", dnp: "" },
+        diagnostico: fc.diagnostico || "",
+      })
+      setConsultaSelId(String(fc.consulta_id))
+      setPartes([newParte()])
+      setOpenForm(true)
+    }
   }, [])
 
   function openNew() {
@@ -654,7 +670,17 @@ export default function Ordenes() {
   function openEdit(o: Orden) {
     setEditOrden(o)
     setRx(descToRx(o.descripcion))
-    setForm({ paciente_id: o.paciente_id.toString(), tipo: o.tipo, fecha_envio: o.fecha_envio, notas: o.notas ?? "" })
+    setForm({
+      paciente_id: o.paciente_id.toString(),
+      tipo: o.tipo,
+      fecha_envio: o.fecha_envio,
+      notas: o.notas ?? "",
+      armazon_ref: (o as any).armazon_ref ?? "",
+      armazon_color: (o as any).armazon_color ?? "",
+      armazon_talla: (o as any).armazon_talla ?? "",
+      precio_venta: (o as any).precio_venta?.toString() ?? "",
+      es_proforma: (o as any).es_proforma ?? false,
+    })
     const ojosGuardado = /Ojo:\s*(od|oi|ao)/i.exec(o.notas ?? "")?.[1] as "od" | "oi" | "ao" | undefined
     setPartes([{
       _id: "edit",
@@ -692,6 +718,10 @@ export default function Ordenes() {
       producto_id: productoId,
       precio_lab: prod?.precio_costo != null ? String(prod.precio_costo) : p.precio_lab,
     } : p))
+    // Auto-fill precio_venta from product if not already set
+    if (prod?.precio_venta != null && Number(prod.precio_venta) > 0 && !form.precio_venta) {
+      setForm(f => ({ ...f, precio_venta: String(prod.precio_venta) }))
+    }
   }
 
   function handleParteFuente(fuente: "lab" | "stock", parteId: string) {
@@ -713,6 +743,13 @@ export default function Ordenes() {
     const descripcion = rxToDesc(rx) || "—"
     setSaving(true)
     try {
+      const extraFields = {
+        armazon_ref: form.armazon_ref || null,
+        armazon_color: form.armazon_color || null,
+        armazon_talla: form.armazon_talla || null,
+        precio_venta: form.precio_venta ? Number(form.precio_venta) : null,
+        es_proforma: form.es_proforma,
+      }
       if (editOrden) {
         const parte = partes[0]
         const labProv = parte.fuente === "stock" ? "Stock propio" : parte.lab_proveedor
@@ -728,6 +765,7 @@ export default function Ordenes() {
           lab_telefono: parte.fuente === "stock" ? null : (parte.lab_telefono || null),
           fecha_entrega_est: parte.fecha_entrega_est || null,
           precio_lab: parte.precio_lab ? Number(parte.precio_lab) : null,
+          ...extraFields,
         })
         toast.success("Orden actualizada")
       } else {
@@ -746,6 +784,8 @@ export default function Ordenes() {
             lab_telefono: parte.fuente === "stock" ? null : (parte.lab_telefono || null),
             fecha_entrega_est: parte.fecha_entrega_est || null,
             precio_lab: parte.precio_lab ? Number(parte.precio_lab) : null,
+            producto_id: parte.fuente === "stock" && parte.producto_id ? Number(parte.producto_id) : null,
+            ...extraFields,
           })
         }
         toast.success(partes.length > 1 ? `${partes.length} órdenes creadas` : "Orden creada")
@@ -828,9 +868,19 @@ export default function Ordenes() {
                       <div className="flex gap-1 pt-1">
                         <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openEdit(o)}>Editar</Button>
                         {o.lab_telefono && (
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-blue-600" onClick={() => enviarAlLab(o, pacienteNombre(o.paciente_id))}>
-                            <Send className="h-3 w-3" />
-                          </Button>
+                          <>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-blue-600"
+                              title="WhatsApp manual" onClick={() => enviarAlLab(o, pacienteNombre(o.paciente_id))}>
+                              <Send className="h-3 w-3" />
+                            </Button>
+                            {waCloudEnabled && (
+                              <Button variant="ghost" size="sm" className="h-7 px-2 text-emerald-600"
+                                title="Enviar via Cloud API" disabled={waApiMut.isPending}
+                                onClick={() => waApiMut.mutate(o.id)}>
+                                <Zap className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -861,7 +911,12 @@ export default function Ordenes() {
               )}
               {ordenesFiltradas.slice((page - 1) * PER_PAGE, page * PER_PAGE).map((o, i) => (
                 <tr key={o.id} className="border-t hover:bg-muted/30 table-row-anim" style={{ animationDelay: `${i * 25}ms` }}>
-                  <td className="px-4 py-2 font-mono font-medium">{o.numero}</td>
+                  <td className="px-4 py-2 font-mono font-medium">
+                    {o.numero}
+                    {(o as any).es_proforma && (
+                      <span className="ml-1.5 text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 px-1.5 py-0.5 rounded-full border border-orange-200 dark:border-orange-700">PROFORMA</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2">{pacienteNombre(o.paciente_id)}</td>
                   <td className="px-4 py-2">{o.lab_proveedor}</td>
                   <td className="px-4 py-2">{o.tipo}</td>
@@ -884,7 +939,11 @@ export default function Ordenes() {
                       onClose={() => setEstadoDropdown(null)}
                       estados={ESTADOS_ORDEN}
                       current={o.estado}
-                      onSelect={s => estadoMut.mutate({ id: o.id, estado: s })}
+                      onSelect={s => {
+                        const IRREVERSIBLES = ["entregado", "rechazado"]
+                        if (IRREVERSIBLES.includes(s) && !window.confirm(`¿Cambiar estado a "${s}"? Esta acción es difícil de revertir.`)) return
+                        estadoMut.mutate({ id: o.id, estado: s })
+                      }}
                     />
                   </td>
                   <td className="px-4 py-2">
@@ -905,13 +964,25 @@ export default function Ordenes() {
                         </Button>
                       )}
                       {o.lab_telefono && (
-                        <Button
-                          variant="ghost" size="sm" className="text-blue-700"
-                          title="Enviar orden al proveedor por WhatsApp"
-                          onClick={() => enviarAlLab(o, pacienteNombre(o.paciente_id))}
-                        >
-                          <Send className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost" size="sm" className="text-blue-700"
+                            title="Abrir WhatsApp (texto manual)"
+                            onClick={() => enviarAlLab(o, pacienteNombre(o.paciente_id))}
+                          >
+                            <Send className="h-4 w-4" />
+                          </Button>
+                          {waCloudEnabled && (
+                            <Button
+                              variant="ghost" size="sm" className="text-emerald-600"
+                              title="Enviar directamente via WhatsApp Cloud API"
+                              disabled={waApiMut.isPending}
+                              onClick={() => waApiMut.mutate(o.id)}
+                            >
+                              {waApiMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                            </Button>
+                          )}
+                        </>
                       )}
                       {o.estado === "listo" && (
                         <Button
@@ -920,6 +991,31 @@ export default function Ordenes() {
                           onClick={() => enviarOrdenLista(pacienteTelefono(o.paciente_id), pacienteNombre(o.paciente_id), o.numero)}
                         >
                           <MessageCircle className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {!o.venta_id && !(o as any).es_proforma && o.estado !== "rechazado" && (
+                        <Button
+                          variant="ghost" size="sm" className="text-emerald-600 dark:text-emerald-400 font-medium text-xs"
+                          title="Crear venta desde esta orden"
+                          onClick={() => navigate("/ventas/nueva", { state: { orden: o, paciente_id: o.paciente_id } })}
+                        >
+                          $ Facturar
+                        </Button>
+                      )}
+                      {o.venta_id && (
+                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium px-2">✓ Facturada</span>
+                      )}
+                      {!o.venta_id && (
+                        <Button
+                          variant="ghost" size="sm" className="text-destructive hover:text-destructive"
+                          title="Eliminar orden"
+                          onClick={() => {
+                            if (confirm(`¿Eliminar orden ${o.numero}? Si era de stock, se repone la unidad.`)) {
+                              deleteMut.mutate(o.id)
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
@@ -1307,33 +1403,62 @@ export default function Ordenes() {
               </div>
             </div>
 
-            {/* Calculadora de precio */}
-            <div className="border rounded-xl p-3 bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800 space-y-2">
-              <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">
-                Calculadora de precio estimado
-              </p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
+            {/* Armazón */}
+            <div className="border rounded-xl p-3 bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800 space-y-2">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">Armazón</p>
+              <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="text-muted-foreground">Potencia máx. (valor absoluto)</label>
-                  <input
-                    type="number"
-                    step="0.25"
-                    min="0"
-                    max="20"
-                    value={potenciaCalc}
-                    onChange={e => setPotenciaCalc(e.target.value)}
-                    className="w-full border rounded px-2 py-1 text-sm bg-background"
-                    placeholder="ej: 3.50"
+                  <label className="text-xs text-muted-foreground">Referencia / Modelo</label>
+                  <Input
+                    placeholder="Ej: Ray-Ban RB3025"
+                    value={form.armazon_ref}
+                    onChange={e => setForm(f => ({ ...f, armazon_ref: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="text-muted-foreground">Precio estimado</label>
-                  <div className={`border rounded px-2 py-1 text-sm font-bold ${precioEstimado ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20" : "text-muted-foreground"}`}>
-                    {precioEstimado ? `$${precioEstimado.toFixed(2)}` : "—"}
-                  </div>
+                  <label className="text-xs text-muted-foreground">Color</label>
+                  <Input
+                    placeholder="Ej: Negro mate"
+                    value={form.armazon_color}
+                    onChange={e => setForm(f => ({ ...f, armazon_color: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Talla</label>
+                  <Input
+                    placeholder="Ej: 52-18-140"
+                    value={form.armazon_talla}
+                    onChange={e => setForm(f => ({ ...f, armazon_talla: e.target.value }))}
+                  />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">Basado en potencia: hasta 2.00 → $45 | hasta 4.00 → $65 | hasta 6.00 → $85 | hasta 8.00 → $110 | mayor → $140</p>
+            </div>
+
+            {/* Precios y proforma */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Precio de venta al cliente ($)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={form.precio_venta}
+                  onChange={e => setForm(f => ({ ...f, precio_venta: e.target.value }))}
+                />
+              </div>
+              <div className="flex items-end pb-1">
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.es_proforma}
+                    onChange={e => setForm(f => ({ ...f, es_proforma: e.target.checked }))}
+                    className="w-4 h-4 rounded"
+                  />
+                  <span className="font-medium">Marcar como Proforma</span>
+                  <span className="text-xs text-muted-foreground">(no genera venta)</span>
+                </label>
+              </div>
             </div>
 
             {/* Notas internas */}
