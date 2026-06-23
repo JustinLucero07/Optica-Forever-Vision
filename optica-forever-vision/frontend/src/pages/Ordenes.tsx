@@ -640,6 +640,13 @@ export default function Ordenes() {
       setConsultaSelId("")
       setOpenForm(true)
     }
+    const ft = (location.state as any)?.fromTurno
+    if (ft) {
+      setEditOrden(null)
+      setForm(f => ({ ...f, paciente_id: ft.paciente_id ? String(ft.paciente_id) : "" }))
+      setPartes([newParte()])
+      setOpenForm(true)
+    }
     const fc = (location.state as any)?.fromConsulta
     if (fc) {
       const fmtN = (v: number | null | undefined) => v != null ? String(v) : ""

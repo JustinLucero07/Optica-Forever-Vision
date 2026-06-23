@@ -155,7 +155,7 @@ export default function VentaDetalle() {
       venta_id: Number(id),
       cuenta_bancaria_id: Number(cobroCuenta) || null,
       fecha: new Date().toISOString().slice(0, 10),
-      concepto: `Cobro venta ${v?.numero}`,
+      concepto: v?.numero ? `Cobro venta ${v.numero}` : "Cobro de venta",
       monto: Number(cobroMonto),
       metodo_pago: cobroMetodo,
       referencia: cobroRef || null,

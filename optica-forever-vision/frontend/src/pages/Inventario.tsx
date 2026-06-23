@@ -136,7 +136,7 @@ export default function Inventario() {
 
   function abrirEntrada(p: Producto) {
     setProductoEntrada(p)
-    resetEnt({ cantidad: "", motivo: "" })
+    resetEnt({ cantidad: "", motivo: p.proveedor ? `Compra a ${p.proveedor.nombre}` : "" })
     setDialogEntrada(true)
   }
 

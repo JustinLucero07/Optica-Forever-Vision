@@ -258,8 +258,15 @@ export default function CajaDiaria() {
         <form onSubmit={hsCi(d => cierreMut.mutate(d))}>
           <DialogBody className="space-y-4">
             <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm space-y-1">
+              <p>Saldo apertura: <strong>{fmtMoney(caja?.saldo_apertura)}</strong></p>
               <p>Cobros registrados: <strong className="text-emerald-600">{fmtMoney(hoy?.cobros_dia)}</strong></p>
               <p>Egresos registrados: <strong className="text-red-500">{fmtMoney(hoy?.egresos_dia)}</strong></p>
+              <p className="border-t pt-1 mt-1 font-semibold">
+                Total esperado en caja:{" "}
+                <strong className="text-primary">
+                  {fmtMoney((caja?.saldo_apertura ?? 0) + (hoy?.cobros_dia ?? 0) - (hoy?.egresos_dia ?? 0))}
+                </strong>
+              </p>
             </div>
             <div className="space-y-1">
               <Label>Efectivo contado ($)</Label>

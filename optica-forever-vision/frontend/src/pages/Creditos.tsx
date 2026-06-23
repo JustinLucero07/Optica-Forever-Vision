@@ -588,7 +588,9 @@ export default function Creditos() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Monto ($) *</Label>
-                <Input type="number" step="0.01" min="0.01" {...rP("monto", { required: true })} />
+                <Input type="number" step="0.01" min="0.01"
+                  max={pagandoCuota ? (Number(pagandoCuota.cuota.monto) - Number(pagandoCuota.cuota.monto_pagado)).toFixed(2) : undefined}
+                  {...rP("monto", { required: true })} />
               </div>
               <div className="space-y-1">
                 <Label>Fecha *</Label>

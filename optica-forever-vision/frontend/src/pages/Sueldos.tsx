@@ -284,7 +284,12 @@ export default function Sueldos() {
       {/* ── Dialog: Registrar pago ── */}
       <Dialog open={dialogPago} onClose={cerrarPago} className="max-w-md">
         <DialogHeader onClose={cerrarPago}>Registrar pago de sueldo</DialogHeader>
-        <form onSubmit={hsPago(d => pagarMut.mutate(d))}>
+        <form onSubmit={hsPago(d => {
+          const uid = Number(d.usuario_id)
+          const ya = pagadoEnPeriodo(uid)
+          if (ya > 0 && !window.confirm(`Este empleado ya tiene $${ya.toFixed(2)} pagados en ${periodoHoy}. ¿Registrar pago adicional?`)) return
+          pagarMut.mutate(d)
+        })}>
           <DialogBody className="space-y-4">
             <div className="space-y-1">
               <Label>Empleado *</Label>

@@ -1,9 +1,9 @@
 import { useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Search, Pencil, Eye, Trash2, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Users, ChevronDown, ChevronUp, UserCheck, UserPlus } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Users, ChevronDown, ChevronUp, UserCheck, UserPlus } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
@@ -86,6 +86,7 @@ function toPayload(f: PacienteForm) {
 }
 
 export default function Pacientes() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<"lista" | "referidos">("lista")
   const [busqueda, setBusqueda] = useState("")
   const [page, setPage]       = useState(1)
@@ -371,8 +372,10 @@ export default function Pacientes() {
               </td></tr>
             )}
             {pacientesSorted.slice((page - 1) * perPage, page * perPage).map((p: Paciente, i: number) => (
-              <tr key={p.id} className="hover:bg-muted/30 transition-colors table-row-anim"
-                  style={{ animationDelay: `${i * 25}ms` }}>
+              <tr key={p.id}
+                  className="hover:bg-muted/30 transition-colors table-row-anim cursor-pointer"
+                  style={{ animationDelay: `${i * 25}ms` }}
+                  onClick={() => navigate(`/pacientes/${p.id}`)}>
                 <td className="px-4 py-3">
                   <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded-lg text-muted-foreground">{p.numero}</span>
                 </td>
@@ -386,16 +389,13 @@ export default function Pacientes() {
                 <td className="px-4 py-3 text-muted-foreground">{p.telefono ?? "—"}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1 justify-end">
-                    <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0">
-                      <Link to={`/pacientes/${p.id}`}><Eye className="h-4 w-4" /></Link>
-                    </Button>
                     {(rol === "admin" || rol === "optometrista" || rol === "vendedor") && (
-                      <Button variant="ghost" size="sm" onClick={() => abrirEditar(p)} className="h-8 w-8 p-0">
+                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); abrirEditar(p) }} className="h-8 w-8 p-0">
                         <Pencil className="h-4 w-4" />
                       </Button>
                     )}
                     {rol === "admin" && (
-                      <Button variant="ghost" size="sm" onClick={() => setEliminando(p)}
+                      <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); setEliminando(p) }}
                               className="h-8 w-8 p-0 text-destructive hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
                       </Button>

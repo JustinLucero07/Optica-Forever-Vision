@@ -159,7 +159,11 @@ export default function Consultas() {
                 </tr>
               )}
               {paged.map(c => (
-                <tr key={c.id} className="border-t hover:bg-muted/30 transition-colors">
+                <tr
+                  key={c.id}
+                  className="border-t hover:bg-muted/30 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/consultas/${c.id}`)}
+                >
                   <td className="px-4 py-3">
                     <Badge variant="outline" className="font-mono text-xs">{c.numero}</Badge>
                   </td>
@@ -170,6 +174,7 @@ export default function Consultas() {
                     <Link
                       to={`/pacientes/${c.paciente_id}`}
                       className="hover:underline underline-offset-2"
+                      onClick={e => e.stopPropagation()}
                     >
                       {c.paciente_nombre}
                     </Link>
@@ -182,11 +187,6 @@ export default function Consultas() {
                   </td>
                   <td className="px-4 py-3 max-w-[200px] truncate text-muted-foreground">
                     {c.diagnostico ?? "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link to={`/consultas/${c.id}`}>Ver →</Link>
-                    </Button>
                   </td>
                 </tr>
               ))}

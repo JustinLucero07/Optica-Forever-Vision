@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   Download, Loader2, TrendingUp, DollarSign,
@@ -290,6 +290,21 @@ export default function Reportes() {
     staleTime: 60_000,
   })
 
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  async function descargarPDF() {
+    const el = contentRef.current
+    if (!el) return
+    const { default: html2canvas } = await import("html2canvas")
+    const { default: jsPDF } = await import("jspdf")
+    const canvas = await html2canvas(el, { scale: 1.5, useCORS: true, backgroundColor: "#ffffff", logging: false })
+    const imgW = 297
+    const imgH = (canvas.height * imgW) / canvas.width
+    const pdf = new jsPDF({ orientation: "l", unit: "mm", format: [imgW, imgH] })
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, imgW, imgH)
+    pdf.save(`reporte-${tab}-${year}.pdf`)
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <PrintHeader title="Reportes y Estadísticas" subtitle={`Año ${year}`} />
@@ -302,7 +317,10 @@ export default function Reportes() {
         <div className="flex items-center gap-2">
           {(tab === "anual") && <YearPicker year={year} onChange={y => { setYear(y) }} />}
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.print()}>
-            <Printer className="h-4 w-4" /> PDF
+            <Printer className="h-4 w-4" /> Imprimir
+          </Button>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={descargarPDF}>
+            <Download className="h-4 w-4" /> Descargar PDF
           </Button>
         </div>
       </div>
@@ -318,6 +336,7 @@ export default function Reportes() {
         ))}
       </div>
 
+      <div ref={contentRef}>
       {/* ── VISTA ANUAL ── */}
       {tab === "anual" && (
         <div className="space-y-6 anim-fade-in">
@@ -894,6 +913,7 @@ export default function Reportes() {
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }

@@ -451,11 +451,18 @@ export default function Turnos() {
                             <div className="flex gap-1 flex-wrap">
                               <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>Editar</Button>
                               {t.estado === "asistido" && t.paciente_id && (
-                                <Button variant="ghost" size="sm" className="text-cyan-700"
-                                  title="Registrar consulta para este turno"
-                                  onClick={() => navigate(`/pacientes/${t.paciente_id}/consultas/nueva`)}>
-                                  <Stethoscope className="h-4 w-4 mr-1" /> Consulta
-                                </Button>
+                                <>
+                                  <Button variant="ghost" size="sm" className="text-cyan-700"
+                                    title="Registrar consulta para este turno"
+                                    onClick={() => navigate(`/pacientes/${t.paciente_id}/consultas/nueva`)}>
+                                    <Stethoscope className="h-4 w-4 mr-1" /> Consulta
+                                  </Button>
+                                  <Button variant="ghost" size="sm" className="text-violet-700"
+                                    title="Crear orden de laboratorio"
+                                    onClick={() => navigate("/ordenes", { state: { fromTurno: { paciente_id: t.paciente_id } } })}>
+                                    <Plus className="h-4 w-4 mr-1" /> Orden
+                                  </Button>
+                                </>
                               )}
                               {t.paciente_id && pacienteTelefono(t.paciente_id) && (
                                 <Button variant="ghost" size="sm" className="text-green-700"

@@ -320,12 +320,16 @@ export default function CuentasPorCobrar() {
                         {estadoBadge(cuota.estado)}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => navigate("/creditos")}
-                          className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                        >
-                          Pagar
-                        </button>
+                        {cuota.saldo > 0 ? (
+                          <button
+                            onClick={() => navigate("/creditos")}
+                            className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                          >
+                            Pagar
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Pagada</span>
+                        )}
                       </td>
                     </tr>
                   )

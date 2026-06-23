@@ -1,8 +1,8 @@
 import { useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Plus, Eye, XCircle, Loader2, Download, ArrowUpDown, ArrowUp, ArrowDown, Copy } from "lucide-react"
+import { Plus, XCircle, Loader2, Download, ArrowUpDown, ArrowUp, ArrowDown, Copy } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
@@ -40,6 +40,7 @@ function SortIcon({ col, sortCol, sortDir }: { col: SortCol; sortCol: SortCol; s
 }
 
 export default function Ventas() {
+  const navigate = useNavigate()
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
   const [page, setPage]       = useState(1)
@@ -186,8 +187,10 @@ export default function Ventas() {
               const saldo = v.total - (v.abonado ?? 0)
               const showSaldo = v.estado !== "cobrado" && v.estado !== "anulado"
               return (
-                <tr key={v.id} className={`hover:bg-muted/30 transition-colors table-row-anim ${v.estado === "anulado" ? "opacity-40" : ""}`}
-                    style={{ animationDelay: `${i * 25}ms` }}>
+                <tr key={v.id}
+                    className={`hover:bg-muted/30 transition-colors table-row-anim cursor-pointer ${v.estado === "anulado" ? "opacity-40" : ""}`}
+                    style={{ animationDelay: `${i * 25}ms` }}
+                    onClick={() => navigate(`/ventas/${v.id}`)}>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{v.numero}</td>
                   <td className="px-4 py-3 text-muted-foreground">{v.fecha}</td>
                   <td className="px-4 py-3 font-medium">{v.paciente_nombre ?? (v.paciente_id ? `Pac. #${v.paciente_id}` : "Consumidor final")}</td>
@@ -204,14 +207,10 @@ export default function Ventas() {
                   <td className="px-4 py-3"><EstadoBadge estado={v.estado} /></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
-                      <Button variant="ghost" size="sm" asChild className="h-8 w-8 p-0">
-                        <Link to={`/ventas/${v.id}`}><Eye className="h-4 w-4" /></Link>
-                      </Button>
                       {(rol === "admin" || rol === "vendedor") && v.estado !== "anulado" && (
                         <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => duplicarMut.mutate(v.id)}
+                          variant="ghost" size="sm"
+                          onClick={e => { e.stopPropagation(); duplicarMut.mutate(v.id) }}
                           disabled={duplicarMut.isPending}
                           title="Duplicar venta"
                           className="h-8 w-8 p-0"
@@ -220,7 +219,8 @@ export default function Ventas() {
                         </Button>
                       )}
                       {rol === "admin" && v.estado !== "anulado" && (
-                        <Button variant="ghost" size="sm" onClick={() => setAnulando(v)}
+                        <Button variant="ghost" size="sm"
+                                onClick={e => { e.stopPropagation(); setAnulando(v) }}
                                 className="h-8 w-8 p-0 text-destructive hover:text-destructive">
                           <XCircle className="h-4 w-4" />
                         </Button>

@@ -229,7 +229,13 @@ export default function ConsultaForm() {
       qc.invalidateQueries({ queryKey: ["consultas", pacienteId] })
       if (esNueva) localStorage.removeItem(draftKey)
       toast.success(esNueva ? "Consulta creada" : "Consulta actualizada")
-      navigate(`/consultas/${res.data.id}`)
+      const proxControl = res.data.proximo_control
+      if (esNueva && proxControl &&
+        window.confirm(`¿Agendar turno de control para el ${proxControl}?`)) {
+        navigate("/turnos", { state: { fromConsulta: { paciente_id: Number(pacienteId), fecha: proxControl, motivo: "Control visual" } } })
+      } else {
+        navigate(`/consultas/${res.data.id}`)
+      }
     },
     onError: (e) => toast.error(errMsg(e, "Error al guardar")),
   })

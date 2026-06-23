@@ -105,6 +105,16 @@ export default function VentaNueva() {
     staleTime: 5_000,
   })
 
+  const [cobroInmediato, setCobroInmediato] = useState(false)
+  const [cobroMetodo, setCobroMetodo] = useState("efectivo")
+  const [cobroCuentaId, setCobroCuentaId] = useState("")
+
+  const { data: cuentasBancarias = [] } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ["cuentas-bancarias"],
+    queryFn: () => api.get("/cuentas-bancarias").then(r => r.data),
+    staleTime: 60_000,
+  })
+
   const { data: ordenesDisponibles = [] } = useQuery<any[]>({
     queryKey: ["ordenes-sin-venta"],
     queryFn: () => api.get("/ordenes", { params: { limit: 200 } }).then(r =>
@@ -156,7 +166,24 @@ export default function VentaNueva() {
         await api.put(`/ordenes/${linkedOrdenId}`, { venta_id: res.data.id }).catch(() => {})
       }
       localStorage.removeItem(DRAFT_KEY)
-      toast.success(`Venta ${res.data.numero} registrada — registra el cobro aquí`)
+      if (cobroInmediato && cobroCuentaId) {
+        try {
+          await api.post("/cobros", {
+            venta_id: res.data.id,
+            cuenta_bancaria_id: Number(cobroCuentaId),
+            fecha: new Date().toISOString().slice(0, 10),
+            concepto: `Cobro venta ${res.data.numero}`,
+            monto: res.data.total,
+            metodo_pago: cobroMetodo,
+          })
+          toast.success(`Venta ${res.data.numero} registrada y cobro aplicado`)
+        } catch {
+          toast.success(`Venta ${res.data.numero} registrada`)
+          toast.error("No se pudo registrar el cobro automático — hazlo desde el detalle")
+        }
+      } else {
+        toast.success(`Venta ${res.data.numero} registrada — registra el cobro aquí`)
+      }
       navigate(`/ventas/${res.data.id}`)
     },
     onError: (e) => toast.error(errMsg(e, "Error al guardar")),
@@ -330,10 +357,40 @@ export default function VentaNueva() {
                 {Number(descuentoGlobal) > 0 && <p className="text-xs text-muted-foreground">Descuento: -${Number(descuentoGlobal).toFixed(2)}</p>}
                 <p className="text-xl font-bold">Total: ${total.toFixed(2)}</p>
               </div>
+              {/* Cobro inmediato */}
+              <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                  <input type="checkbox" checked={cobroInmediato} onChange={e => setCobroInmediato(e.target.checked)} className="rounded" />
+                  Cobrar al instante
+                </label>
+                {cobroInmediato && (
+                  <div className="flex gap-2">
+                    <select value={cobroMetodo} onChange={e => setCobroMetodo(e.target.value)}
+                      className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
+                      <option value="efectivo">Efectivo</option>
+                      <option value="transferencia">Transferencia</option>
+                      <option value="tarjeta">Tarjeta</option>
+                      <option value="cheque">Cheque</option>
+                    </select>
+                    <select value={cobroCuentaId} onChange={e => setCobroCuentaId(e.target.value)}
+                      className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
+                      <option value="">— cuenta —</option>
+                      {cuentasBancarias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               <Button
                 size="lg"
-                disabled={cart.length === 0 || venderMut.isPending}
-                onClick={() => venderMut.mutate()}
+                disabled={cart.length === 0 || venderMut.isPending || (cobroInmediato && !cobroCuentaId)}
+                onClick={() => {
+                  const sinPrecio = cart.filter(it => it.precio_unitario <= 0)
+                  if (sinPrecio.length > 0) {
+                    if (!window.confirm(`${sinPrecio.length} item(s) tienen precio $0.00. ¿Confirmar de todos modos?`)) return
+                  }
+                  venderMut.mutate()
+                }}
               >
                 {venderMut.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Confirmar Venta
