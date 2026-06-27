@@ -470,8 +470,8 @@ def import_cobros(
         # Idempotencia: no duplicar cobros para la misma venta y monto
         if venta_id:
             ya_existe = db.execute(
-                select(Cobro).where(Cobro.venta_id == venta_id, Cobro.monto == monto)
-            ).scalar_one_or_none()
+                select(Cobro).where(Cobro.venta_id == venta_id, Cobro.monto == monto).limit(1)
+            ).scalars().first()
             if ya_existe:
                 skipped += 1
                 continue
