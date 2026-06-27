@@ -24,7 +24,7 @@ from app.models.producto import Categoria, Producto
 from app.models.tesoreria import CuentaBancaria, Cobro, CuentaPorPagar, Egreso
 from app.models.user import User
 from app.models.venta import Venta, VentaItem
-from app.models.agenda import OrdenTrabajo
+
 from app.models.consulta import Consulta
 from app.models.credito import Credito, CuotaCredito
 OPTICA_PATH = "/app/data/OpticaRevisado.xlsm"
@@ -466,6 +466,15 @@ def import_cobros(
         metodo, cuenta_nombre = _metodo_cuenta(metodo_raw)
         cuenta_id = cuentas.get(cuenta_nombre) or cuentas.get("Efectivo")
         venta_id = venta_map.get(kv)
+
+        # Idempotencia: no duplicar cobros para la misma venta y monto
+        if venta_id:
+            ya_existe = db.execute(
+                select(Cobro).where(Cobro.venta_id == venta_id, Cobro.monto == monto)
+            ).scalar_one_or_none()
+            if ya_existe:
+                skipped += 1
+                continue
 
         cobro = Cobro(
             numero=f"COB-{str(counter).zfill(4)}",
