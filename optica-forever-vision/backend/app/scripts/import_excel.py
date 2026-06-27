@@ -898,7 +898,7 @@ def import_cobros_caja(db: Session, ws, cuentas: dict[str, int], admin_id: int) 
             monto=monto,
             metodo_pago=metodo,
             concepto=concepto[:200],
-            creado_por=admin_id,
+            usuario_id=admin_id,
         ))
         created += 1
 
