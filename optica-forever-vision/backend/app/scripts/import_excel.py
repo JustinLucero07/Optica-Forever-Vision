@@ -11,7 +11,7 @@ Uso (desde el contenedor Docker):
 El script es idempotente: se puede correr varias veces sin duplicar registros.
 """
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 import openpyxl
@@ -25,6 +25,8 @@ from app.models.tesoreria import CuentaBancaria, Cobro, CuentaPorPagar, Egreso
 from app.models.user import User
 from app.models.venta import Venta, VentaItem
 from app.models.agenda import OrdenTrabajo
+from app.models.consulta import Consulta
+from app.models.credito import Credito, CuotaCredito
 OPTICA_PATH = "/app/data/OpticaRevisado.xlsm"
 CUENTAS_PATH = "/app/data/Cuentas.xlsx"
 
@@ -604,6 +606,142 @@ def import_cxp(db: Session, ws) -> None:
     print(f"  → {created} creadas, {skipped} omitidas")
 
 
+# ── paso 8: consultas ─────────────────────────────────────────────────────────
+# bdConsulta: col C=key, D=keyPaciente, E=fecha, F=resumen, G-Z=anamnesis (texto libre)
+
+def import_consultas(db: Session, ws, pac_map: dict[str, int]) -> None:
+    print("\n[8] Consultas (bdConsulta)...")
+
+    existing_max = db.execute(
+        text("SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)), 0) FROM consultas WHERE numero LIKE 'CON-%'")
+    ).scalar()
+    counter = (existing_max or 0) + 1
+    created = skipped = 0
+
+    for row in _all_rows(ws):
+        if len(row) < 5:
+            continue
+        key = _str(row[2])                        # columna C: C1, C2, ...
+        if not (key.startswith("C") and key[1:].isdigit()):
+            continue
+
+        numero = f"CON-{str(counter).zfill(4)}"
+
+        # Idempotencia: verificar si ya existe una consulta importada con ese numero origen
+        existing = db.execute(
+            select(Consulta).where(Consulta.numero == numero)
+        ).scalar_one_or_none()
+        if existing:
+            skipped += 1
+            counter += 1
+            continue
+
+        pac_key = _str(row[3])                    # columna D
+        fecha   = _date(row[4]) or date.today()   # columna E
+        resumen = _str(row[5], 500) if len(row) > 5 else None  # columna F
+
+        # Columnas G en adelante: respuestas de anamnesis → concatenar como observaciones
+        extras = [_str(row[i], 200) for i in range(6, min(len(row), 24)) if row[i] is not None and _str(row[i])]
+        observaciones = " | ".join(extras) if extras else None
+
+        c = Consulta(
+            numero=numero,
+            paciente_id=pac_map.get(pac_key),
+            fecha=fecha,
+            motivo_consulta=resumen or observaciones,
+            antecedentes=observaciones,
+        )
+        db.add(c)
+        counter += 1
+        created += 1
+
+    db.commit()
+    print(f"  → {created} creadas, {skipped} ya existían")
+
+
+# ── paso 9: créditos (Cxc) ────────────────────────────────────────────────────
+# Cxc: fila7=headers, fila9+ datos
+# col D=key, E=fecha, F=keyCliente, G=keyVenta, H=TotalDeuda, I=Abono, J=Saldo, K=Concepto
+
+def import_creditos(
+    db: Session,
+    ws,
+    pac_map: dict[str, int],
+    venta_map: dict[str, int],
+) -> None:
+    print("\n[9] Créditos (Cxc)...")
+
+    existing_max = db.execute(
+        text("SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)), 0) FROM creditos WHERE numero LIKE 'CXC-%'")
+    ).scalar()
+    counter = (existing_max or 0) + 1
+    created = skipped = 0
+
+    for row in _all_rows(ws):
+        if len(row) < 4:
+            continue
+        key = _str(row[3])                         # columna D
+        if not key.startswith("Cxc"):
+            continue
+
+        numero = f"CXC-{str(counter).zfill(4)}"
+
+        existing = db.execute(
+            select(Credito).where(Credito.numero == numero)
+        ).scalar_one_or_none()
+        if existing:
+            skipped += 1
+            counter += 1
+            continue
+
+        fecha      = _date(row[4]) or date.today()      # columna E
+        pac_key    = _str(row[5]) if len(row) > 5 else ""  # columna F
+        venta_key  = _str(row[6]) if len(row) > 6 else ""  # columna G
+        monto_total = _dec(row[7]) if len(row) > 7 else Decimal("0")  # columna H
+        abono      = _dec(row[8]) if len(row) > 8 else Decimal("0")   # columna I
+        saldo      = _dec(row[9]) if len(row) > 9 else (monto_total - abono)  # columna J
+        concepto   = _str(row[10], 255) if len(row) > 10 else "Crédito importado"  # columna K
+
+        if monto_total <= 0:
+            skipped += 1
+            continue
+
+        estado = "pagado" if saldo <= 0 else "vigente"
+
+        cred = Credito(
+            numero=numero,
+            paciente_id=pac_map.get(pac_key),
+            venta_id=venta_map.get(venta_key),
+            monto_total=monto_total,
+            abono_inicial=abono,
+            monto_pagado=abono,
+            numero_cuotas=1,
+            fecha_inicio=fecha,
+            estado=estado,
+            notas=concepto or None,
+        )
+        db.add(cred)
+        db.flush()
+
+        # Crear la cuota por el saldo restante
+        if saldo > 0:
+            cuota = CuotaCredito(
+                credito_id=cred.id,
+                numero_cuota=1,
+                monto=saldo,
+                fecha_vencimiento=fecha + timedelta(days=30),
+                monto_pagado=Decimal("0"),
+                estado="pendiente",
+            )
+            db.add(cuota)
+
+        counter += 1
+        created += 1
+
+    db.commit()
+    print(f"  → {created} creados, {skipped} omitidos")
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def run() -> None:
@@ -639,6 +777,8 @@ def run() -> None:
         import_cobros(db, wb_optica["bdIngresos"], venta_map, cuentas, admin.id)
         import_egresos(db, wb_cuentas["EGRESOS"], cuentas, admin.id)
         import_cxp(db, wb_cuentas["FACTURAS"])
+        import_consultas(db, wb_optica["bdConsulta"], pac_map)
+        import_creditos(db, wb_optica["Cxc"], pac_map, venta_map)
 
         wb_optica.close()
         wb_cuentas.close()
@@ -651,12 +791,16 @@ def run() -> None:
         n_cob = db.execute(select(func.count()).select_from(Cobro)).scalar()
         n_egr = db.execute(select(func.count()).select_from(Egreso)).scalar()
         n_cxp = db.execute(select(func.count()).select_from(CuentaPorPagar)).scalar()
+        n_con = db.execute(select(func.count()).select_from(Consulta)).scalar()
+        n_cred = db.execute(select(func.count()).select_from(Credito)).scalar()
         print(f"  Pacientes:        {n_pac}")
         print(f"  Productos:        {n_prod}")
         print(f"  Ventas:           {n_ven}")
         print(f"  Cobros:           {n_cob}")
         print(f"  Egresos:          {n_egr}")
         print(f"  Cuentas x Pagar:  {n_cxp}")
+        print(f"  Consultas:        {n_con}")
+        print(f"  Créditos (CxC):   {n_cred}")
         print("=" * 60)
         print("  [OK] Importación completada.")
         print("=" * 60)

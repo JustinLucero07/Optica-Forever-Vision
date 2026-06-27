@@ -41,9 +41,8 @@ services:
       db:
         condition: service_healthy
     volumes:
-      # Archivos Excel para la migración — copiarlos a deploy/data/ antes de correr el script
-      - ./data/OpticaRevisado.xlsm:/app/data/OpticaRevisado.xlsm:ro
-      - ./data/Cuentas.xlsx:/app/data/Cuentas.xlsx:ro
+      # Carpeta con los Excel para migración (montar toda la carpeta, no archivos individuales)
+      - ./data:/app/data:ro
 
   frontend:
     build:
