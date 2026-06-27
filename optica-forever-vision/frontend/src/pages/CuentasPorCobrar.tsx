@@ -133,7 +133,7 @@ export default function CuentasPorCobrar() {
   })
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Cartera — Cuentas por Cobrar</h1>
         <p className="text-sm text-muted-foreground">
@@ -248,6 +248,7 @@ export default function CuentasPorCobrar() {
 
           {/* Table */}
           <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/40">
@@ -336,6 +337,7 @@ export default function CuentasPorCobrar() {
                 })}
               </tbody>
             </table>
+        </div>
             <Paginador page={page} total={filtered.length} perPage={perPage} onChange={setPage} onPerPageChange={n => { setPerPage(n); setPage(1) }} />
           </div>
 

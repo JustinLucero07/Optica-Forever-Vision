@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link, useNavigate, useLocation } from "react-router-dom"
 import { toast } from "sonner"
-import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, MessageCircle, Stethoscope } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, MessageCircle, Stethoscope, Calendar } from "lucide-react"
+import { EmptyState } from "@/components/ui/empty-state"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -239,11 +240,15 @@ export default function Turnos() {
   function enviarRecordatorio(t: Turno) {
     const p = pacientes.find(p => p.id === t.paciente_id)
     if (!p) return
+    if (!p.telefono) {
+      toast.error(`${p.nombres} no tiene teléfono registrado — agrega uno en su perfil`)
+      return
+    }
     enviarRecordatorioCita(p.telefono, p.nombres, fmtFechaLarga(t.fecha), t.hora_inicio)
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-3 sm:p-6 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -418,36 +423,46 @@ export default function Turnos() {
               })
             const paged = sorted.slice((pageLista - 1) * perPage, pageLista * perPage)
             return (
-              <div className="rounded-lg border overflow-hidden">
+              <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="text-left px-4 py-2">Fecha</th>
-                      <th className="text-left px-4 py-2">Hora</th>
-                      <th className="text-left px-4 py-2">Paciente</th>
-                      <th className="text-left px-4 py-2">Motivo</th>
-                      <th className="text-left px-4 py-2">Estado</th>
-                      <th className="px-4 py-2"></th>
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Fecha</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Hora</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Paciente</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Motivo</th>
+                      <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Estado</th>
+                      <th className="px-4 py-3" />
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-border/50">
                     {sorted.length === 0 && (
-                      <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Sin turnos en este período</td></tr>
+                      <tr>
+                        <td colSpan={6}>
+                          <EmptyState
+                            icon={Calendar}
+                            title="Sin turnos en este período"
+                            description="Agendar un turno para comenzar"
+                            action={{ label: "Nuevo turno", onClick: () => openNew() }}
+                          />
+                        </td>
+                      </tr>
                     )}
                     {paged.map(t => {
                       const isPast = `${t.fecha}T${t.hora_inicio}` < new Date().toISOString().slice(0, 16)
                       return (
-                        <tr key={t.id} className={`border-t hover:bg-muted/30 ${isPast ? "opacity-60" : ""}`}>
-                          <td className="px-4 py-2">{fmtFechaCorta(parseDate(t.fecha))}</td>
-                          <td className="px-4 py-2 font-semibold tabular-nums">{t.hora_inicio}{t.hora_fin ? ` – ${t.hora_fin}` : ""}</td>
-                          <td className="px-4 py-2">
+                        <tr key={t.id} className={`hover:bg-muted/30 transition-colors table-row-anim ${isPast ? "opacity-60" : ""}`}>
+                          <td className="px-4 py-3">{fmtFechaCorta(parseDate(t.fecha))}</td>
+                          <td className="px-4 py-3 font-semibold tabular-nums">{t.hora_inicio}{t.hora_fin ? ` – ${t.hora_fin}` : ""}</td>
+                          <td className="px-4 py-3">
                             {t.paciente_id
                               ? <Link to={`/pacientes/${t.paciente_id}`} className="hover:text-primary hover:underline underline-offset-2">{pacienteNombre(t.paciente_id)}</Link>
                               : "—"}
                           </td>
-                          <td className="px-4 py-2">{t.motivo}</td>
-                          <td className="px-4 py-2"><EstadoBadge estado={t.estado} /></td>
-                          <td className="px-4 py-2">
+                          <td className="px-4 py-3">{t.motivo}</td>
+                          <td className="px-4 py-3"><EstadoBadge estado={t.estado} /></td>
+                          <td className="px-4 py-3">
                             <div className="flex gap-1 flex-wrap">
                               <Button variant="ghost" size="sm" onClick={() => openEdit(t)}>Editar</Button>
                               {t.estado === "asistido" && t.paciente_id && (
@@ -481,6 +496,7 @@ export default function Turnos() {
                     })}
                   </tbody>
                 </table>
+        </div>
                 <Paginador page={pageLista} total={sorted.length} perPage={perPage} onChange={setPageLista} onPerPageChange={n => { setPerPage(n); setPageLista(1) }} />
               </div>
             )

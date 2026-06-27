@@ -4,7 +4,7 @@ import {
   TrendingUp, DollarSign, ShoppingBag, Clock,
   ClipboardList, Users, ArrowDownCircle, Loader2,
   Package, AlertCircle, TrendingDown,
-  Activity, Zap, MessageCircle, Cake, Eye, CreditCard, PackageCheck,
+  Activity, MessageCircle, Cake, Eye, CreditCard, PackageCheck,
 } from "lucide-react"
 import {
   enviarCumpleanios, enviarControlVisual,
@@ -64,18 +64,24 @@ function fmtMes(ym: string) {
 // ── Tooltip ────────────────────────────────────────────────────────────────────
 interface ChartTooltipProps {
   active?: boolean
-  payload?: Array<{ color: string; value: number }>
+  payload?: Array<{ color: string; value: number; name?: string }>
   label?: string
   isCurrency?: boolean
 }
 function ChartTooltip({ active, payload, label, isCurrency = true }: ChartTooltipProps) {
   if (!active || !payload?.length) return null
   return (
-    <div className="glass rounded-2xl overflow-hidden px-4 py-3 text-sm shadow-2xl">
+    <div className="glass rounded-2xl overflow-hidden px-4 py-3 text-sm shadow-2xl space-y-1">
       <p className="text-muted-foreground text-xs mb-1.5">{label}</p>
-      <p className="font-bold text-lg" style={{ color: payload[0].color }}>
-        {isCurrency ? fmt(payload[0].value) : payload[0].value}
-      </p>
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
+          <span className="font-bold" style={{ color: p.color }}>
+            {isCurrency ? fmt(p.value) : p.value}
+          </span>
+          {p.name && payload.length > 1 && <span className="text-xs text-muted-foreground capitalize">{p.name}</span>}
+        </div>
+      ))}
     </div>
   )
 }
@@ -94,13 +100,16 @@ function LiveBadge() {
 }
 
 // ── Quick stat strip (hoy) ─────────────────────────────────────────────────────
-function QuickStat({ label, value, isCurrency, color }: {
-  label: string; value: number; isCurrency?: boolean; color: string
+function QuickStat({ label, value, isCurrency, color, onClick }: {
+  label: string; value: number; isCurrency?: boolean; color: string; onClick?: () => void
 }) {
   const animated = useCountUp(value, 800)
   const display = isCurrency ? fmtShort(animated) : Math.round(animated).toString()
   return (
-    <div className="glass rounded-2xl overflow-hidden px-4 py-3.5 flex items-center gap-3 anim-fade-up hover:scale-[1.02] transition-transform duration-200">
+    <div
+      className={`glass rounded-2xl overflow-hidden px-4 py-3.5 flex items-center gap-3 anim-fade-up hover:scale-[1.02] transition-transform duration-200 ${onClick ? "cursor-pointer" : ""}`}
+      onClick={onClick}
+    >
       <div className="w-2 h-8 rounded-full flex-shrink-0" style={{ background: color }} />
       <div>
         <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
@@ -326,9 +335,15 @@ export default function Dashboard() {
   const gridColor = dark ? "#ffffff0f" : "#0000000d"
   const tickColor = dark ? "#475569" : "#94a3b8"
 
-  const ventasMes = (analytics?.ventas_por_mes ?? []).map((r: any) => ({
-    name: fmtMes(r.mes), ventas: r.total, cobros: 0,
-  }))
+  // Merge ventas y cobros por mes en un array unificado
+  const ventasMes = (() => {
+    const vMap: Record<string, number> = {}
+    const cMap: Record<string, number> = {}
+    for (const r of (analytics?.ventas_por_mes ?? [])) vMap[r.mes] = r.total
+    for (const r of (analytics?.cobros_por_mes ?? [])) cMap[r.mes] = r.total
+    const meses = Array.from(new Set([...Object.keys(vMap), ...Object.keys(cMap)])).sort()
+    return meses.map(m => ({ name: fmtMes(m), ventas: vMap[m] ?? 0, cobros: cMap[m] ?? 0 }))
+  })()
 
   // Mini sparkline para hoy vs ayer (usamos los primeros datos del mes)
   const ordenesData = (analytics?.ordenes_por_estado ?? []).map((r: any) => ({
@@ -371,8 +386,8 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <QuickStat label="Ventas hoy"      value={kpis.ventas_hoy}   isCurrency color={primaryHex} />
             <QuickStat label="Cobros hoy"      value={kpis.cobros_hoy}   isCurrency color="#10b981" />
-            <QuickStat label="Turnos hoy"      value={kpis.turnos_hoy}              color="#f59e0b" />
-            <QuickStat label="Órdenes activas" value={kpis.ordenes_activas}         color="#8b5cf6" />
+            <QuickStat label="Turnos hoy"      value={kpis.turnos_hoy}              color="#f59e0b" onClick={() => navigate("/turnos")} />
+            <QuickStat label="Órdenes activas" value={kpis.ordenes_activas}         color="#8b5cf6" onClick={() => navigate("/ordenes")} />
             {cajaHoy && (
               <Link to="/caja" className="block">
                 <div className="glass rounded-2xl p-4 flex flex-col gap-1 hover:scale-[1.02] transition-transform cursor-pointer">
@@ -418,23 +433,27 @@ export default function Dashboard() {
             {/* Área chart — 2/3 del ancho */}
             <div className="lg:col-span-2 glass rounded-2xl overflow-hidden p-5 anim-fade-up"
                  style={{ animationDelay: "320ms" }}>
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <p className="text-sm font-bold">Tendencia de ventas</p>
+                  <p className="text-sm font-bold">Ventas vs Cobros</p>
                   <p className="text-xs text-muted-foreground mt-0.5">Últimos 12 meses</p>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-full">
-                  <Zap className="h-3 w-3" style={{ color: primaryHex }} />
-                  {ventasMes.length} meses
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded-full inline-block" style={{ background: primaryHex }} />Ventas</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 rounded-full inline-block bg-emerald-500" />Cobros</span>
                 </div>
               </div>
               {ventasMes.length > 1 ? (
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height={210}>
                   <AreaChart data={ventasMes} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
                     <defs>
                       <linearGradient id="vGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor={primaryHex} stopOpacity={0.4} />
+                        <stop offset="5%"  stopColor={primaryHex} stopOpacity={0.35} />
                         <stop offset="95%" stopColor={primaryHex} stopOpacity={0.01} />
+                      </linearGradient>
+                      <linearGradient id="cGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.01} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
@@ -442,14 +461,18 @@ export default function Dashboard() {
                     <YAxis tick={{ fill: tickColor, fontSize: 10 }} axisLine={false} tickLine={false}
                       tickFormatter={v => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`} />
                     <Tooltip content={<ChartTooltip />} />
-                    <Area type="monotone" dataKey="ventas" stroke={primaryHex} strokeWidth={2.5}
+                    <Area type="monotone" dataKey="ventas" name="ventas" stroke={primaryHex} strokeWidth={2.5}
                       fill="url(#vGrad)" dot={false}
                       activeDot={{ r: 6, fill: primaryHex, stroke: "hsl(var(--card))", strokeWidth: 2 }}
+                      isAnimationActive animationDuration={1200} animationEasing="ease-out" />
+                    <Area type="monotone" dataKey="cobros" name="cobros" stroke="#10b981" strokeWidth={2}
+                      fill="url(#cGrad)" dot={false}
+                      activeDot={{ r: 5, fill: "#10b981", stroke: "hsl(var(--card))", strokeWidth: 2 }}
                       isAnimationActive animationDuration={1200} animationEasing="ease-out" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
+                <div className="h-[210px] flex items-center justify-center text-muted-foreground text-sm">
                   Sin datos suficientes
                 </div>
               )}
@@ -494,7 +517,7 @@ export default function Dashboard() {
                 <KpiCard label="Cobros pendientes"  value={kpis.ventas_pendientes_cobro}  icon={ShoppingBag}
                   sub="ventas sin cobrar" color="#64748b" delay={460} />
                 <KpiCard label="Órdenes listas"    value={kpis.ordenes_listas}            icon={ClipboardList}
-                  sub="para entregar" color="#10b981" delay={520} />
+                  sub="para entregar" color="#10b981" delay={520} onClick={() => navigate("/ordenes")} />
                 <KpiCard label="Pacientes hoy"     value={kpis.turnos_hoy}               icon={Clock}
                   sub="con turno" color="#f59e0b" delay={580} />
               </div>

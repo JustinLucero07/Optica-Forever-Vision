@@ -153,7 +153,7 @@ export default function Proveedores() {
     setForm(prev => ({ ...prev, [field]: e.target.value }))
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-3 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Proveedores</h1>
         <Button onClick={openNew}>

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm, type UseFormRegisterReturn } from "react-hook-form"
 import { toast } from "sonner"
 import { type LucideIcon, Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2, ArrowLeftRight, AlertTriangle, BarChart2, Building2, Pencil } from "lucide-react"
+import { deleteWithUndo } from "@/lib/confirm"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
@@ -47,7 +49,9 @@ function EstadoBadge({ estado }: { estado: string }) {
 }
 
 export default function Cobros() {
-  const [tab, setTab] = useState<Tab>("cobros")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = (searchParams.get("tab") as Tab) ?? "cobros"
+  const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true })
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
   const [pageCobros, setPageCobros] = useState(1)
@@ -309,7 +313,7 @@ export default function Cobros() {
   )
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-3 sm:p-6 space-y-4">
       <h1 className="text-2xl font-bold">Tesorería</h1>
 
       {/* Resumen rápido */}
@@ -355,18 +359,19 @@ export default function Cobros() {
 
       {/* Tab: Cobros */}
       {tab === "cobros" && (
-        <div className="rounded-md border overflow-hidden">
+        <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium">Número</th>
-                <th className="text-left px-4 py-3 font-medium">Fecha</th>
-                <th className="text-left px-4 py-3 font-medium">Concepto</th>
-                <th className="text-left px-4 py-3 font-medium">Método</th>
-                <th className="text-right px-4 py-3 font-medium">Monto</th>
+            <thead>
+              <tr className="border-b bg-muted/40">
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Número</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Fecha</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Concepto</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Método</th>
+                <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Monto</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/50">
               {cargCobros && <tr><td colSpan={5} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>}
               {!cargCobros && cobros.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No hay cobros en el período</td></tr>}
               {cobros.slice((pageCobros - 1) * perPage, pageCobros * perPage).map(c => (
@@ -380,24 +385,26 @@ export default function Cobros() {
               ))}
             </tbody>
           </table>
+        </div>
           <Paginador page={pageCobros} total={cobros.length} perPage={perPage} onChange={setPageCobros} onPerPageChange={n => { setPerPage(n); setPageCobros(1) }} />
         </div>
       )}
 
       {/* Tab: Egresos */}
       {tab === "egresos" && (
-        <div className="rounded-md border overflow-hidden">
+        <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium">Número</th>
-                <th className="text-left px-4 py-3 font-medium">Fecha</th>
-                <th className="text-left px-4 py-3 font-medium">Categoría</th>
-                <th className="text-left px-4 py-3 font-medium">Concepto</th>
-                <th className="text-right px-4 py-3 font-medium">Monto</th>
+            <thead>
+              <tr className="border-b bg-muted/40">
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Número</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Fecha</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Categoría</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Concepto</th>
+                <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Monto</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border/50">
               {cargEgr && <tr><td colSpan={5} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>}
               {!cargEgr && egresos.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No hay egresos en el período</td></tr>}
               {egresos.slice((pageEgresos - 1) * perPage, pageEgresos * perPage).map(e => (
@@ -411,6 +418,7 @@ export default function Cobros() {
               ))}
             </tbody>
           </table>
+        </div>
           <Paginador page={pageEgresos} total={egresos.length} perPage={perPage} onChange={setPageEgresos} onPerPageChange={n => { setPerPage(n); setPageEgresos(1) }} />
         </div>
       )}
@@ -429,22 +437,23 @@ export default function Cobros() {
 
           {/* Desktop table */}
           {!cargCxP && cxps.length > 0 && (
-            <div className="hidden md:block rounded-md border overflow-hidden">
+            <div className="hidden md:block bg-card rounded-2xl border shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
+                <thead>
+                  <tr className="border-b bg-muted/40">
                     <th className="w-8 px-2 py-3" />
-                    <th className="text-left px-4 py-3 font-medium">Proveedor</th>
-                    <th className="text-left px-4 py-3 font-medium">Concepto</th>
-                    <th className="text-left px-4 py-3 font-medium">Emisión</th>
-                    <th className="text-left px-4 py-3 font-medium">Vencimiento</th>
-                    <th className="text-right px-4 py-3 font-medium">Total</th>
-                    <th className="text-right px-4 py-3 font-medium">Pendiente</th>
-                    <th className="text-left px-4 py-3 font-medium">Estado</th>
+                    <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Proveedor</th>
+                    <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Concepto</th>
+                    <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Emisión</th>
+                    <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Vencimiento</th>
+                    <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Total</th>
+                    <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Pendiente</th>
+                    <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Estado</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className="divide-y divide-border/50">
                   {cxps.slice((pageCxP - 1) * perPage, pageCxP * perPage).map(c => (
                     <>
                       <tr key={c.id} className={`hover:bg-muted/30 ${c.estado === "pagado" ? "opacity-60" : ""}`}>
@@ -477,6 +486,7 @@ export default function Cobros() {
                   ))}
                 </tbody>
               </table>
+        </div>
               <Paginador page={pageCxP} total={cxps.length} perPage={perPage} onChange={setPageCxP} onPerPageChange={n => { setPerPage(n); setPageCxP(1) }} />
             </div>
           )}
@@ -1064,7 +1074,7 @@ function CxPAcciones({ c, rol, onPagar, onEliminar }: {
       )}
       {rol === "admin" && c.monto_pagado === 0 && (
         <button
-          onClick={() => { if (confirm(`¿Eliminar CxP de ${c.proveedor}?`)) onEliminar() }}
+          onClick={() => deleteWithUndo(`CxP de ${c.proveedor} eliminada`, onEliminar)}
           className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
           title="Eliminar"
         >

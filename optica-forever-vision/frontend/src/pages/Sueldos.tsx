@@ -121,7 +121,7 @@ export default function Sueldos() {
   const usuariosActivos = usuarios.filter(u => u.activo !== false)
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="p-3 sm:p-6 space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Sueldos</h1>
@@ -287,7 +287,13 @@ export default function Sueldos() {
         <form onSubmit={hsPago(d => {
           const uid = Number(d.usuario_id)
           const ya = pagadoEnPeriodo(uid)
-          if (ya > 0 && !window.confirm(`Este empleado ya tiene $${ya.toFixed(2)} pagados en ${periodoHoy}. ¿Registrar pago adicional?`)) return
+          if (ya > 0) {
+            toast.warning(`Este empleado ya tiene $${ya.toFixed(2)} pagados en ${periodoHoy}`, {
+              action: { label: "Registrar igual", onClick: () => pagarMut.mutate(d) },
+              duration: 7000,
+            })
+            return
+          }
           pagarMut.mutate(d)
         })}>
           <DialogBody className="space-y-4">

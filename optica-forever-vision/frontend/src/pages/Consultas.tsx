@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { Search, Loader2, Stethoscope, Plus } from "lucide-react"
+import { EmptyState } from "@/components/ui/empty-state"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -72,8 +73,8 @@ export default function Consultas() {
   const paged = filtradas.slice((pageLocal - 1) * perPage, pageLocal * perPage)
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="p-3 sm:p-6 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Stethoscope className="h-6 w-6" /> Consultas
@@ -109,10 +110,10 @@ export default function Consultas() {
 
       {/* Búsqueda y filtros */}
       <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pl-9 w-72"
+            className="pl-9 w-full"
             placeholder="Paciente, cédula o número de consulta..."
             value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
@@ -120,11 +121,11 @@ export default function Consultas() {
           />
         </div>
         <Button onClick={buscar}>Buscar</Button>
-        <div className="flex items-center gap-1 ml-2">
+        <div className="flex flex-wrap items-center gap-1">
           <span className="text-xs text-muted-foreground">Desde</span>
-          <Input type="date" className="h-9 w-36 text-sm" value={desde} onChange={e => { setDesde(e.target.value); setPageLocal(1) }} />
+          <Input type="date" className="h-9 w-32 sm:w-36 text-sm rounded-xl" value={desde} onChange={e => { setDesde(e.target.value); setPageLocal(1) }} />
           <span className="text-xs text-muted-foreground">Hasta</span>
-          <Input type="date" className="h-9 w-36 text-sm" value={hasta} onChange={e => { setHasta(e.target.value); setPageLocal(1) }} />
+          <Input type="date" className="h-9 w-32 sm:w-36 text-sm rounded-xl" value={hasta} onChange={e => { setHasta(e.target.value); setPageLocal(1) }} />
           {(desde || hasta) && (
             <button className="text-xs text-muted-foreground hover:text-foreground underline" onClick={() => { setDesde(""); setHasta("") }}>Limpiar</button>
           )}
@@ -137,31 +138,37 @@ export default function Consultas() {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="rounded-lg border overflow-hidden">
+        <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left px-4 py-2.5 font-medium">N°</th>
-                <th className="text-left px-4 py-2.5 font-medium">Fecha</th>
-                <th className="text-left px-4 py-2.5 font-medium">Paciente</th>
-                <th className="text-left px-4 py-2.5 font-medium">Motivo</th>
-                <th className="text-left px-4 py-2.5 font-medium">Refracción OD</th>
-                <th className="text-left px-4 py-2.5 font-medium">Diagnóstico</th>
-                <th className="px-4 py-2.5"></th>
+            <thead>
+              <tr className="border-b bg-muted/40">
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">N°</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Fecha</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Paciente</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Motivo</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Refracción OD</th>
+                <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Diagnóstico</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-border/50">
               {filtradas.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-muted-foreground">
-                    {q || desde || hasta ? "Sin resultados con los filtros aplicados" : "Sin consultas registradas"}
+                  <td colSpan={7}>
+                    <EmptyState
+                      icon={Stethoscope}
+                      title={q || desde || hasta ? "Sin resultados" : "Sin consultas registradas"}
+                      description={q || desde || hasta ? "Prueba con otros filtros o rangos de fecha" : "Registra la primera consulta para comenzar"}
+                      action={!q && !desde && !hasta ? { label: "Nueva consulta", onClick: () => navigate("/consultas/nueva") } : undefined}
+                    />
                   </td>
                 </tr>
               )}
               {paged.map(c => (
                 <tr
                   key={c.id}
-                  className="border-t hover:bg-muted/30 transition-colors cursor-pointer"
+                  className="hover:bg-muted/30 transition-colors cursor-pointer table-row-anim"
                   onClick={() => navigate(`/consultas/${c.id}`)}
                 >
                   <td className="px-4 py-3">
@@ -192,6 +199,7 @@ export default function Consultas() {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 

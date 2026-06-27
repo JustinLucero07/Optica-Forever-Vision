@@ -177,7 +177,7 @@ export default function SRIImport() {
   const hayOverrides = Object.keys(overrides).length > 0
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="p-3 sm:p-6 space-y-6 max-w-5xl">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">Importar Factura SRI</h1>

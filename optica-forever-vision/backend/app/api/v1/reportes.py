@@ -731,6 +731,7 @@ def analytics(
     hoy = date.today()
     result: dict = {
         "ventas_por_mes": [],
+        "cobros_por_mes": [],
         "top_productos": [],
         "pacientes_por_origen": [],
         "cobros_por_metodo": [],
@@ -749,6 +750,23 @@ def analytics(
             ORDER BY 1
         """), {"estado": "anulado", "desde": hoy.replace(day=1) - timedelta(days=365)}).all()
         result["ventas_por_mes"] = [
+            {"mes": r.mes, "total": float(r.total), "cantidad": int(r.cantidad)}
+            for r in rows
+        ]
+    except Exception:
+        db.rollback()
+
+    try:
+        rows = db.execute(text("""
+            SELECT to_char(fecha, 'YYYY-MM') AS mes,
+                   SUM(monto) AS total,
+                   COUNT(*) AS cantidad
+            FROM cobros
+            WHERE fecha >= :desde
+            GROUP BY to_char(fecha, 'YYYY-MM')
+            ORDER BY 1
+        """), {"desde": hoy.replace(day=1) - timedelta(days=365)}).all()
+        result["cobros_por_mes"] = [
             {"mes": r.mes, "total": float(r.total), "cantidad": int(r.cantidad)}
             for r in rows
         ]
@@ -1037,6 +1055,124 @@ def reporte_anual(
         "ordenes_por_tipo": ordenes_por_tipo,
         "creditos": creditos,
     }
+
+
+# ── Excel anual ───────────────────────────────────────────────────────────────
+
+@router.get("/anual/excel")
+def reporte_anual_excel(
+    year: int = Query(default=None),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    if year is None:
+        year = date.today().year
+
+    inicio = date(year, 1, 1)
+    fin = date(year, 12, 31)
+    meses_labels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+
+    rows_v = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM fecha)::int AS mes, COALESCE(SUM(total), 0) AS total, COUNT(*) AS cantidad
+        FROM ventas WHERE estado != 'anulado' AND fecha BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM fecha) ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    ventas_dict = {r.mes: (float(r.total), int(r.cantidad)) for r in rows_v}
+
+    rows_c = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM fecha)::int AS mes, COALESCE(SUM(monto), 0) AS total
+        FROM cobros WHERE fecha BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM fecha) ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    cobros_dict = {r.mes: float(r.total) for r in rows_c}
+
+    rows_e = db.execute(text("""
+        SELECT EXTRACT(MONTH FROM fecha)::int AS mes, COALESCE(SUM(monto), 0) AS total
+        FROM egresos WHERE fecha BETWEEN :inicio AND :fin
+        GROUP BY EXTRACT(MONTH FROM fecha) ORDER BY mes
+    """), {"inicio": inicio, "fin": fin}).all()
+    egresos_dict = {r.mes: float(r.total) for r in rows_e}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Anual {year}"
+
+    cols = ["Mes", "Ventas $", "Cant. Ventas", "Cobros $", "Egresos $", "Resultado $"]
+    _header_row(ws, cols)
+    ws.column_dimensions["A"].width = 10
+    ws.column_dimensions["B"].width = 16
+    ws.column_dimensions["C"].width = 14
+    ws.column_dimensions["D"].width = 16
+    ws.column_dimensions["E"].width = 16
+    ws.column_dimensions["F"].width = 16
+
+    pos_fill = PatternFill("solid", fgColor="D1FAE5")
+    neg_fill = PatternFill("solid", fgColor="FEE2E2")
+
+    for m in range(1, 13):
+        ventas, cant = ventas_dict.get(m, (0, 0))
+        cobros = cobros_dict.get(m, 0)
+        egresos = egresos_dict.get(m, 0)
+        resultado = cobros - egresos
+        ws.append([meses_labels[m - 1], ventas, cant, cobros, egresos, resultado])
+        fill = pos_fill if resultado >= 0 else neg_fill
+        ws.cell(ws.max_row, 6).fill = fill
+
+    return _excel_response(wb, f"reporte-anual-{year}.xlsx")
+
+
+# ── Excel pacientes inactivos ─────────────────────────────────────────────────
+
+@router.get("/pacientes-inactivos/excel")
+def pacientes_inactivos_excel(
+    meses: int = Query(default=12, ge=1, le=60),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    from sqlalchemy import or_ as sql_or
+    limite = date.today() - timedelta(days=meses * 30)
+
+    subq = (
+        select(Consulta.paciente_id, func.max(Consulta.fecha).label("ultima_consulta"))
+        .group_by(Consulta.paciente_id)
+        .subquery()
+    )
+
+    rows = db.execute(
+        select(Paciente, subq.c.ultima_consulta)
+        .outerjoin(subq, Paciente.id == subq.c.paciente_id)
+        .where(
+            sql_or(
+                subq.c.ultima_consulta < limite,
+                subq.c.ultima_consulta.is_(None),
+            )
+        )
+        .order_by(subq.c.ultima_consulta.desc().nullslast())
+        .limit(1000)
+    ).all()
+
+    hoy = date.today()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Pacientes Inactivos"
+
+    cols = ["N° Paciente", "Apellidos", "Nombres", "Cédula", "Teléfono", "Última consulta", "Meses inactivo"]
+    _header_row(ws, cols)
+    for col, w in zip("ABCDEFG", [12, 20, 20, 14, 15, 18, 16]):
+        ws.column_dimensions[col].width = w
+
+    alert_fill = PatternFill("solid", fgColor="FEE2E2")
+
+    for p, uc in rows:
+        meses_inactivo = round((hoy - uc).days / 30) if uc else None
+        row_data = [p.numero or "", p.apellidos, p.nombres, p.cedula or "", p.telefono or "", uc.isoformat() if uc else "Nunca", meses_inactivo or "Nunca"]
+        ws.append(row_data)
+        if meses_inactivo is None or meses_inactivo >= 12:
+            for col in range(1, 8):
+                ws.cell(ws.max_row, col).fill = alert_fill
+
+    return _excel_response(wb, f"pacientes-inactivos-{meses}m.xlsx")
 
 
 # ── Pacientes inactivos ────────────────────────────────────────────────────────

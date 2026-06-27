@@ -11,6 +11,7 @@ import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { useAuthStore } from "@/store/auth"
 import { enviarControlVisual, enviarCumpleanios } from "@/lib/whatsapp"
 import { toast } from "sonner"
@@ -146,7 +147,7 @@ function EstadoCuenta({ pacienteId }: { pacienteId: number | string }) {
                   <p className="text-xs text-amber-600 font-semibold mt-1">{fmt(data.total_ventas_pendientes)}</p>
                 )}
               </div>
-              <div className="rounded-xl px-4 py-3 bg-muted/40 border border-border/50">
+              <Link to="/creditos" className="rounded-xl px-4 py-3 bg-muted/40 border border-border/50 hover:bg-muted/60 transition-colors block">
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
                   <CreditCard className="h-3 w-3" /> Créditos activos
                 </p>
@@ -154,17 +155,18 @@ function EstadoCuenta({ pacienteId }: { pacienteId: number | string }) {
                 {data.total_creditos_pendientes > 0 && (
                   <p className="text-xs text-red-600 font-semibold mt-1">{fmt(data.total_creditos_pendientes)}</p>
                 )}
-              </div>
+              </Link>
             </div>
             {creditos.length > 0 && (
               <div className="space-y-1.5">
                 {creditos.map((c: any) => (
-                  <div key={c.id} className="flex items-center justify-between text-xs rounded-lg bg-muted/30 px-3 py-1.5">
+                  <Link key={c.id} to="/creditos"
+                    className="flex items-center justify-between text-xs rounded-lg bg-muted/30 px-3 py-1.5 hover:bg-muted/50 transition-colors">
                     <span className="font-mono font-medium">{c.numero}</span>
                     <span className={`capitalize ${c.estado === "vencido" ? "text-red-600" : "text-muted-foreground"}`}>{c.estado}</span>
                     {c.cuotas_vencidas > 0 && <span className="text-red-600 font-semibold">{c.cuotas_vencidas} venc.</span>}
                     <span className="font-semibold">{fmt(c.saldo)}</span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
@@ -704,10 +706,14 @@ export default function PacienteDetalle() {
   const ordenesEnProceso = ordenesActivas.filter(o => !["entregado", "rechazado"].includes(o.estado))
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-3 sm:p-6 space-y-5">
+      <Breadcrumb crumbs={[
+        { label: "Pacientes", to: "/pacientes" },
+        { label: nombreCompleto },
+      ]} />
       {/* ── Header ── */}
       <div className="flex items-start gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="mt-1">
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="mt-1" title="Volver">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0">

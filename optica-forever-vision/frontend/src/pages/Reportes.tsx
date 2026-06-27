@@ -1,4 +1,5 @@
 import { useState, useRef } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
   Download, Loader2, TrendingUp, DollarSign,
@@ -226,7 +227,9 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 export default function Reportes() {
-  const [tab, setTab] = useState<Tab>("anual")
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = (searchParams.get("tab") as Tab) ?? "anual"
+  const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true })
   const [year, setYear] = useState(new Date().getFullYear())
   const [desde, setDesde] = useState(sixMonthsAgo())
   const [hasta, setHasta] = useState(today())
@@ -306,7 +309,7 @@ export default function Reportes() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <PrintHeader title="Reportes y Estadísticas" subtitle={`Año ${year}`} />
 
       <div className="flex items-start justify-between gap-4 anim-fade-up no-print">
@@ -314,13 +317,19 @@ export default function Reportes() {
           <h1 className="text-2xl font-bold tracking-tight">Reportes & KPIs</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Análisis completo del negocio por año y período</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(tab === "anual") && <YearPicker year={year} onChange={y => { setYear(y) }} />}
+          {tab === "anual" && (
+            <Button variant="outline" size="sm" className="gap-1.5"
+              onClick={() => downloadExcel("/reportes/anual/excel", `reporte-anual-${year}.xlsx`, { year: String(year) })}>
+              <Download className="h-4 w-4" /> Excel
+            </Button>
+          )}
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.print()}>
             <Printer className="h-4 w-4" /> Imprimir
           </Button>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={descargarPDF}>
-            <Download className="h-4 w-4" /> Descargar PDF
+            <Download className="h-4 w-4" /> PDF
           </Button>
         </div>
       </div>
@@ -848,7 +857,7 @@ export default function Reportes() {
       {/* ── INACTIVOS ── */}
       {tab === "inactivos" && (
         <div className="space-y-5 anim-fade-in">
-          <div className="flex flex-wrap gap-4 items-end">
+          <div className="flex flex-wrap gap-4 items-end justify-between">
             <div>
               <label className="text-xs text-muted-foreground">Sin consulta hace más de (meses)</label>
               <div className="flex items-center gap-2 mt-1">
@@ -861,6 +870,10 @@ export default function Reportes() {
                 <Input type="number" min="1" max="120" className="w-24 h-9" value={mesesInactivos} onChange={e => setMesesInactivos(Number(e.target.value))} />
               </div>
             </div>
+            <Button variant="outline" size="sm" className="gap-1.5"
+              onClick={() => downloadExcel("/reportes/pacientes-inactivos/excel", `inactivos-${mesesInactivos}m.xlsx`, { meses: String(mesesInactivos) })}>
+              <Download className="h-4 w-4" /> Exportar Excel
+            </Button>
           </div>
           {inactivosLoading ? (
             <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>

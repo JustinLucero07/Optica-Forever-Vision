@@ -31,6 +31,46 @@ export default function VentaNueva() {
 
   const initCart = (): CartItem[] => {
     if (ordenInicial) {
+      const armazon = Number(ordenInicial.precio_armazon ?? 0)
+      const lunas = Number(ordenInicial.precio_lunas ?? 0)
+      if (armazon > 0 || lunas > 0) {
+        const items: CartItem[] = []
+        if (armazon > 0) {
+          items.push({
+            producto_id: null,
+            descripcion: ordenInicial.armazon_ref
+              ? `Armazón ${ordenInicial.armazon_ref}`
+              : "Armazón",
+            cantidad: 1,
+            precio_unitario: armazon,
+            descuento_pct: 0,
+            garantia_meses: null,
+          })
+        }
+        if (lunas > 0) {
+          items.push({
+            producto_id: null,
+            descripcion: `Lunas ${ordenInicial.tipo ?? ""}`.trim(),
+            cantidad: 1,
+            precio_unitario: lunas,
+            descuento_pct: 0,
+            garantia_meses: null,
+          })
+        }
+        const total = Number(ordenInicial.precio_venta ?? 0)
+        const resto = total - armazon - lunas
+        if (resto > 0.01) {
+          items.push({
+            producto_id: null,
+            descripcion: "Otros servicios",
+            cantidad: 1,
+            precio_unitario: resto,
+            descuento_pct: 0,
+            garantia_meses: null,
+          })
+        }
+        return items
+      }
       return [{
         producto_id: null,
         descripcion: ordenInicial.tipo ?? "Orden de laboratorio",
@@ -229,9 +269,9 @@ export default function VentaNueva() {
         )}
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Buscador de productos */}
-        <div className="w-80 border-r flex flex-col bg-muted/10">
+        <div className="w-full md:w-80 border-b md:border-b-0 md:border-r flex flex-col bg-muted/10 max-h-[40vh] md:max-h-none overflow-y-auto md:overflow-visible">
           <div className="p-4 space-y-2">
             <Label className="text-xs font-medium text-muted-foreground">BUSCAR PRODUCTO</Label>
             <div className="relative">
@@ -387,7 +427,11 @@ export default function VentaNueva() {
                 onClick={() => {
                   const sinPrecio = cart.filter(it => it.precio_unitario <= 0)
                   if (sinPrecio.length > 0) {
-                    if (!window.confirm(`${sinPrecio.length} item(s) tienen precio $0.00. ¿Confirmar de todos modos?`)) return
+                    toast.warning(`${sinPrecio.length} ítem(s) con precio $0.00`, {
+                      action: { label: "Confirmar venta", onClick: () => venderMut.mutate() },
+                      duration: 7000,
+                    })
+                    return
                   }
                   venderMut.mutate()
                 }}

@@ -172,7 +172,7 @@ export default function Usuarios() {
   })
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-3 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Usuarios</h1>
         <Button onClick={abrirNuevo}>
@@ -202,19 +202,20 @@ export default function Usuarios() {
         </select>
       </div>
 
-      <div className="rounded-md border overflow-hidden">
+      <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left px-4 py-3 font-medium">Nombre</th>
-              <th className="text-left px-4 py-3 font-medium">Email</th>
-              <th className="text-left px-4 py-3 font-medium">Rol</th>
-              <th className="text-left px-4 py-3 font-medium">Estado</th>
-              <th className="text-left px-4 py-3 font-medium">Fecha creación</th>
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Nombre</th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Email</th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Rol</th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Estado</th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Fecha creación</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-border/50">
             {isLoading && (
               <tr>
                 <td colSpan={6} className="text-center py-8 text-muted-foreground">
@@ -270,6 +271,7 @@ export default function Usuarios() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Dialog open={dialogOpen} onClose={cerrarDialog} className="max-w-lg">

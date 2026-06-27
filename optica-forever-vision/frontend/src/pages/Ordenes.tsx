@@ -4,12 +4,13 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { Paginador } from "@/components/ui/Paginador"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Plus, Loader2, Printer, ChevronDown, MessageCircle, Send, Trash2, PlusCircle, Tag, LayoutGrid, List, Zap } from "lucide-react"
+import { Plus, Loader2, Printer, ChevronDown, MessageCircle, Send, Trash2, PlusCircle, Tag, LayoutGrid, List, Zap, ShoppingCart, Stethoscope, Glasses, Eye, FileText, CheckCircle2 } from "lucide-react"
+import { deleteWithUndo, confirmAction } from "@/lib/confirm"
 import { enviarOrdenLista } from "@/lib/whatsapp"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogBody } from "@/components/ui/dialog"
 import { getMarcaFooter, PDF_BASE_CSS, openPrintWindow, getMarcaLogo, downloadHtmlAsPdf } from "@/lib/pdf"
 import { parsePrescripcion } from "@/lib/rx"
 import { useBrandStore } from "@/store/brand"
@@ -140,6 +141,8 @@ const EMPTY_FORM = {
   armazon_ref: "",
   armazon_color: "",
   armazon_talla: "",
+  precio_armazon: "",
+  precio_lunas: "",
   precio_venta: "",
   es_proforma: false,
 }
@@ -520,6 +523,22 @@ export default function Ordenes() {
   })
   const [rx, setRx] = useState<RxForm>({ ...EMPTY_RX, od: { ...EMPTY_RX_OJO }, oi: { ...EMPTY_RX_OJO } })
   const [partes, setPartes] = useState<OrdenParte[]>([newParte()])
+  const [precioItems, setPrecioItems] = useState<{ id: string; descripcion: string; monto: string }[]>([
+    { id: "arm", descripcion: "Armazón", monto: "" },
+    { id: "lun", descripcion: "Lunas", monto: "" },
+  ])
+  const precioTotal = precioItems.reduce((s, it) => s + (parseFloat(it.monto) || 0), 0)
+  function setPrecioItem(id: string, field: "descripcion" | "monto", val: string) {
+    setPrecioItems(items => items.map(it => it.id === id ? { ...it, [field]: val } : it))
+  }
+  function addPrecioItem() {
+    setPrecioItems(items => [...items, { id: Date.now().toString(), descripcion: "", monto: "" }])
+  }
+  function removePrecioItem(id: string) {
+    setPrecioItems(items => items.filter(it => it.id !== id))
+  }
+  const EMPTY_LUNA_ESPECS = { material: "", indice: "", tratamientos: [] as string[], color: "", diametro: "" }
+  const [lunaEspecs, setLunaEspecs] = useState({ ...EMPTY_LUNA_ESPECS })
   const [saving, setSaving] = useState(false)
   const [estadoDropdown, setEstadoDropdown] = useState<number | null>(null)
   const estadoAnchorRef = useRef<HTMLElement | null>(null)
@@ -671,6 +690,11 @@ export default function Ordenes() {
     setPartes([newParte()])
     setConsultaSelId("")
     setFuenteRx("refraccion")
+    setPrecioItems([
+      { id: "arm", descripcion: "Armazón", monto: "" },
+      { id: "lun", descripcion: "Lunas", monto: "" },
+    ])
+    setLunaEspecs({ ...EMPTY_LUNA_ESPECS })
     setOpenForm(true)
   }
 
@@ -685,8 +709,27 @@ export default function Ordenes() {
       armazon_ref: (o as any).armazon_ref ?? "",
       armazon_color: (o as any).armazon_color ?? "",
       armazon_talla: (o as any).armazon_talla ?? "",
+      precio_armazon: (o as any).precio_armazon?.toString() ?? "",
+      precio_lunas: (o as any).precio_lunas?.toString() ?? "",
       precio_venta: (o as any).precio_venta?.toString() ?? "",
       es_proforma: (o as any).es_proforma ?? false,
+    })
+    const pArm = Number((o as any).precio_armazon ?? 0)
+    const pLun = Number((o as any).precio_lunas ?? 0)
+    const pVen = Number((o as any).precio_venta ?? 0)
+    const extras = pVen - pArm - pLun
+    const editItems: { id: string; descripcion: string; monto: string }[] = [
+      { id: "arm", descripcion: "Armazón", monto: pArm > 0 ? pArm.toFixed(2) : "" },
+      { id: "lun", descripcion: "Lunas", monto: pLun > 0 ? pLun.toFixed(2) : "" },
+    ]
+    if (extras > 0.01) editItems.push({ id: "ext", descripcion: "Otros", monto: extras.toFixed(2) })
+    setPrecioItems(editItems)
+    setLunaEspecs({
+      material: (o as any).luna_material ?? "",
+      indice: (o as any).luna_indice ?? "",
+      tratamientos: (o as any).luna_tratamientos ? ((o as any).luna_tratamientos as string).split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+      color: (o as any).luna_color ?? "",
+      diametro: (o as any).luna_diametro ?? "",
     })
     const ojosGuardado = /Ojo:\s*(od|oi|ao)/i.exec(o.notas ?? "")?.[1] as "od" | "oi" | "ao" | undefined
     setPartes([{
@@ -750,12 +793,26 @@ export default function Ordenes() {
     const descripcion = rxToDesc(rx) || "—"
     setSaving(true)
     try {
+      const findItem = (kw: string) => {
+        const it = precioItems.find(i => i.descripcion.toLowerCase().includes(kw))
+        return it ? (parseFloat(it.monto) || 0) : 0
+      }
+      const pArmazon = findItem("armazón") || findItem("armazon") || null
+      const pLunas = findItem("luna") || null
+      const pVentaCalc = precioTotal > 0 ? precioTotal : (form.precio_venta ? Number(form.precio_venta) : null)
       const extraFields = {
         armazon_ref: form.armazon_ref || null,
         armazon_color: form.armazon_color || null,
         armazon_talla: form.armazon_talla || null,
-        precio_venta: form.precio_venta ? Number(form.precio_venta) : null,
+        precio_armazon: pArmazon,
+        precio_lunas: pLunas,
+        precio_venta: pVentaCalc,
         es_proforma: form.es_proforma,
+        luna_material: lunaEspecs.material || null,
+        luna_indice: lunaEspecs.indice || null,
+        luna_tratamientos: lunaEspecs.tratamientos.length ? lunaEspecs.tratamientos.join(", ") : null,
+        luna_color: lunaEspecs.color || null,
+        luna_diametro: lunaEspecs.diametro || null,
       }
       if (editOrden) {
         const parte = partes[0]
@@ -855,7 +912,7 @@ export default function Ordenes() {
             const cols = ordenesFiltradas.filter(o => o.estado === estado)
             return (
               <div key={estado} className="flex-shrink-0 w-64">
-                <div className="flex items-center justify-between mb-2 px-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{estado.replace("_", " ")}</span>
                   <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${ESTADO_BADGE_CLASS[estado] ?? "bg-muted text-muted-foreground"}`}>{cols.length}</span>
                 </div>
@@ -872,8 +929,44 @@ export default function Ordenes() {
                       <p className="text-xs font-medium text-foreground truncate">{pacienteNombre(o.paciente_id)}</p>
                       <p className="text-xs text-muted-foreground truncate">{o.tipo}</p>
                       <p className="text-xs text-muted-foreground">{o.lab_proveedor}</p>
-                      <div className="flex gap-1 pt-1">
+                      {(o as any).armazon_ref && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 truncate">🕶 {(o as any).armazon_ref}</p>
+                      )}
+                      {((o as any).luna_material || (o as any).luna_tratamientos) && (
+                        <p className="text-xs text-cyan-700 dark:text-cyan-400 truncate">
+                          👁 {[(o as any).luna_material, (o as any).luna_tratamientos].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                      {(o as any).precio_venta > 0 && (
+                        <p className="text-xs font-semibold text-primary">
+                          ${Number((o as any).precio_venta).toFixed(2)}
+                          {(o as any).precio_armazon > 0 && (o as any).precio_lunas > 0 && (
+                            <span className="text-muted-foreground font-normal ml-1">
+                              (Arm ${Number((o as any).precio_armazon).toFixed(2)} + L ${Number((o as any).precio_lunas).toFixed(2)})
+                            </span>
+                          )}
+                        </p>
+                      )}
+                      <div className="flex gap-1 pt-1 flex-wrap">
                         <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => openEdit(o)}>Editar</Button>
+                        {!o.venta_id && !(o as any).es_proforma && o.estado !== "rechazado" && (
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-emerald-600 font-semibold"
+                            onClick={() => {
+                              if (!((o as any).precio_venta) || Number((o as any).precio_venta) <= 0) {
+                                toast.error("Ingresa el precio de venta antes de facturar")
+                                return
+                              }
+                              navigate("/ventas/nueva", { state: { orden: o, paciente_id: o.paciente_id } })
+                            }}>
+                            <ShoppingCart className="h-3 w-3 mr-1" />Facturar
+                          </Button>
+                        )}
+                        {o.venta_id && (
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-emerald-600"
+                            onClick={() => navigate(`/ventas/${o.venta_id}`)}>
+                            ✓ Ver venta
+                          </Button>
+                        )}
                         {o.lab_telefono && (
                           <>
                             <Button variant="ghost" size="sm" className="h-7 px-2 text-blue-600"
@@ -899,6 +992,7 @@ export default function Ordenes() {
         </div>
       ) : (
         <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr className="border-b">
@@ -909,6 +1003,7 @@ export default function Ordenes() {
                 <th className="text-left px-4 py-2 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Envío</th>
                 <th className="text-left px-4 py-2 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Entrega est.</th>
                 <th className="text-left px-4 py-2 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Estado</th>
+                <th className="text-right px-4 py-2 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Total</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
@@ -948,10 +1043,27 @@ export default function Ordenes() {
                       current={o.estado}
                       onSelect={s => {
                         const IRREVERSIBLES = ["entregado", "rechazado"]
-                        if (IRREVERSIBLES.includes(s) && !window.confirm(`¿Cambiar estado a "${s}"? Esta acción es difícil de revertir.`)) return
+                        if (IRREVERSIBLES.includes(s)) {
+                          confirmAction(`¿Cambiar estado a "${s}"? Difícil de revertir.`, () => estadoMut.mutate({ id: o.id, estado: s }), "Cambiar")
+                          return
+                        }
                         estadoMut.mutate({ id: o.id, estado: s })
                       }}
                     />
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-sm">
+                    {(o as any).precio_venta && Number((o as any).precio_venta) > 0 ? (
+                      <span className="font-semibold text-primary">${Number((o as any).precio_venta).toFixed(2)}</span>
+                    ) : (
+                      <span className="text-muted-foreground/40 text-xs">—</span>
+                    )}
+                    {(o as any).precio_armazon > 0 || (o as any).precio_lunas > 0 ? (
+                      <p className="text-xs text-muted-foreground leading-tight">
+                        {(o as any).precio_armazon > 0 && <span>Arm ${Number((o as any).precio_armazon).toFixed(2)}</span>}
+                        {(o as any).precio_armazon > 0 && (o as any).precio_lunas > 0 && " + "}
+                        {(o as any).precio_lunas > 0 && <span>L ${Number((o as any).precio_lunas).toFixed(2)}</span>}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex gap-1 flex-wrap">
@@ -1010,17 +1122,23 @@ export default function Ordenes() {
                         </Button>
                       )}
                       {o.venta_id && (
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium px-2">✓ Facturada</span>
+                        <Button
+                          variant="ghost" size="sm"
+                          className="text-xs text-emerald-600 dark:text-emerald-400 font-medium"
+                          onClick={() => navigate(`/ventas/${o.venta_id}`)}
+                          title="Ver venta"
+                        >
+                          ✓ Ver venta
+                        </Button>
                       )}
                       {!o.venta_id && (
                         <Button
                           variant="ghost" size="sm" className="text-destructive hover:text-destructive"
                           title="Eliminar orden"
-                          onClick={() => {
-                            if (confirm(`¿Eliminar orden ${o.numero}? Si era de stock, se repone la unidad.`)) {
-                              deleteMut.mutate(o.id)
-                            }
-                          }}
+                          onClick={() => deleteWithUndo(
+                            `Orden ${o.numero} eliminada`,
+                            () => deleteMut.mutate(o.id),
+                          )}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -1031,147 +1149,171 @@ export default function Ordenes() {
               ))}
             </tbody>
           </table>
+        </div>
           <Paginador page={page} total={ordenesFiltradas.length} perPage={PER_PAGE} onChange={setPage} onPerPageChange={n => { setPER_PAGE(n); setPage(1) }} />
         </div>
       )
       }
 
       {/* FORM DIALOG */}
-      <Dialog open={openForm} onClose={() => setOpenForm(false)} className="max-w-4xl">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <h2 className="text-lg font-semibold">
-              {editOrden ? `Editar ${editOrden.numero}` : "Nueva orden de trabajo"}
-            </h2>
-          </DialogHeader>
-
-          <DialogBody className="space-y-4">
-            {/* Datos básicos */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="text-sm font-medium">Paciente *</label>
-                <select
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                  value={form.paciente_id}
-                  onChange={e => setForm(f => ({ ...f, paciente_id: e.target.value }))}
-                  required
-                >
-                  <option value="">— Seleccionar paciente —</option>
-                  {pacientes.map(p => (
-                    <option key={p.id} value={p.id}>{p.apellidos} {p.nombres} — {p.cedula}</option>
-                  ))}
-                </select>
+      <Dialog open={openForm} onClose={() => setOpenForm(false)} className="max-w-5xl">
+        <form onSubmit={handleSubmit} className={saving ? "pointer-events-none opacity-70" : ""}>
+          {/* ── Header ── */}
+          <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <label className="text-sm font-medium">Tipo *</label>
-                <select
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                  value={form.tipo}
-                  onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
-                >
-                  {TIPOS_ORDEN.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Fecha envío *</label>
-                <Input type="date" value={form.fecha_envio} onChange={e => setForm(f => ({ ...f, fecha_envio: e.target.value }))} required />
+                <h2 className="text-base font-bold text-foreground">
+                  {editOrden ? `Editar ${editOrden.numero}` : "Nueva orden de trabajo"}
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {editOrden ? "Modifica los datos de la orden" : "Completa los datos para crear la orden de laboratorio"}
+                </p>
               </div>
             </div>
+          </div>
 
-            {/* Cargar desde consulta */}
-            {!editOrden && form.paciente_id && (
-              <div className="space-y-3 rounded-lg border border-cyan-200 bg-cyan-50/60 dark:bg-cyan-950/20 dark:border-cyan-800 px-4 py-3">
-                <span className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">
-                  Cargar prescripción desde consulta
-                </span>
-                {consultasDePaciente.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Este paciente no tiene consultas registradas</p>
-                ) : (
-                  <>
-                    {/* Fuente */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-cyan-700 dark:text-cyan-300 shrink-0">Fuente:</span>
-                      <div className="flex rounded-md border border-cyan-300 overflow-hidden text-xs font-medium">
-                        {([
-                          { key: "refraccion", label: "Refracción" },
-                          { key: "lentes", label: "Lentes conv." },
-                          { key: "contacto", label: "Contactología" },
-                        ] as const).map((opt, i) => (
-                          <button
-                            key={opt.key}
-                            type="button"
-                            className={`px-3 py-1 transition-colors ${i > 0 ? "border-l border-cyan-300" : ""} ${fuenteRx === opt.key ? "bg-cyan-600 text-white" : "bg-white/50 text-cyan-700 hover:bg-cyan-100 dark:bg-transparent dark:text-cyan-300"}`}
-                            onClick={() => {
-                              setFuenteRx(opt.key)
-                              if (consultaSelId) cargarDesdeConsulta(consultaSelId, opt.key)
-                            }}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {/* Selector de consulta */}
+          <DialogBody className="p-0">
+            <div className="divide-y divide-border">
+
+              {/* ══ BLOQUE 1: DATOS GENERALES ══ */}
+              <div className="px-6 py-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground shrink-0">1</div>
+                  <span className="text-sm font-semibold text-foreground">Datos generales</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-1">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Paciente *</label>
                     <select
-                      className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
-                      value={consultaSelId}
-                      onChange={e => cargarDesdeConsulta(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background mt-1.5 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                      value={form.paciente_id}
+                      onChange={e => setForm(f => ({ ...f, paciente_id: e.target.value }))}
+                      required
                     >
-                      <option value="">— Seleccionar consulta —</option>
-                      {consultasDePaciente.map(c => {
-                        const lc = c.recetas?.find(r => r.tipo === "lente_convencional")
-                        const cl = c.recetas?.find(r => r.tipo === "contactologia")
-                        const preview = fuenteRx === "refraccion"
-                          ? [c.rx_od_esf != null ? `OD: ${Number(c.rx_od_esf) >= 0 ? "+" : ""}${c.rx_od_esf}` : "",
-                             c.rx_oi_esf != null ? `OI: ${Number(c.rx_oi_esf) >= 0 ? "+" : ""}${c.rx_oi_esf}` : ""].filter(Boolean).join(" / ")
-                          : fuenteRx === "lentes"
-                          ? lc ? [lc.lc_od_esf != null ? `OD: ${Number(lc.lc_od_esf) >= 0 ? "+" : ""}${lc.lc_od_esf}` : "",
-                                   lc.lc_oi_esf != null ? `OI: ${Number(lc.lc_oi_esf) >= 0 ? "+" : ""}${lc.lc_oi_esf}` : ""].filter(Boolean).join(" / ")
-                                : "sin receta LC"
-                          : cl ? [cl.cl_od_esf != null ? `OD: ${Number(cl.cl_od_esf) >= 0 ? "+" : ""}${cl.cl_od_esf}` : "",
-                                   cl.cl_oi_esf != null ? `OI: ${Number(cl.cl_oi_esf) >= 0 ? "+" : ""}${cl.cl_oi_esf}` : ""].filter(Boolean).join(" / ")
-                                : "sin receta CL"
-                        return (
-                          <option key={c.id} value={c.id}>
-                            {c.numero} — {c.fecha}{preview ? ` | ${preview}` : ""}{c.diagnostico ? ` | ${c.diagnostico}` : ""}
-                          </option>
-                        )
-                      })}
+                      <option value="">— Seleccionar paciente —</option>
+                      {pacientes.map(p => (
+                        <option key={p.id} value={p.id}>{p.apellidos} {p.nombres} — {p.cedula}</option>
+                      ))}
                     </select>
-                  </>
-                )}
-                {consultaSelId && (
-                  <p className="text-xs text-cyan-600 dark:text-cyan-400">
-                    ✓ Prescripción cargada. Cada parte enviará los ojos según su selector OD / OI / Ambos.
-                  </p>
-                )}
-              </div>
-            )}
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo de orden *</label>
+                    <select
+                      className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background mt-1.5 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                      value={form.tipo}
+                      onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
+                    >
+                      {TIPOS_ORDEN.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Fecha de envío *</label>
+                    <Input type="date" value={form.fecha_envio} onChange={e => setForm(f => ({ ...f, fecha_envio: e.target.value }))} required className="mt-1.5" />
+                  </div>
+                </div>
 
-            {/* Prescripción */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-cyan-50 px-4 py-2.5 text-sm font-semibold text-cyan-800 uppercase tracking-wide border-b border-cyan-100">
-                Prescripción / Receta
+                {/* Cargar desde consulta */}
+                {!editOrden && form.paciente_id && (
+                  <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/70 dark:bg-sky-950/20 dark:border-sky-800 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Stethoscope className="h-4 w-4 text-sky-600" />
+                      <span className="text-xs font-semibold text-sky-700 dark:text-sky-300 uppercase tracking-wide">
+                        Importar prescripción desde consulta
+                      </span>
+                    </div>
+                    {consultasDePaciente.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">Este paciente no tiene consultas registradas.</p>
+                    ) : (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-sky-700 dark:text-sky-300 shrink-0 font-medium">Fuente:</span>
+                          <div className="flex rounded-lg border border-sky-300 overflow-hidden text-xs font-medium shadow-sm">
+                            {([
+                              { key: "refraccion", label: "Refracción" },
+                              { key: "lentes", label: "Lentes conv." },
+                              { key: "contacto", label: "Contactología" },
+                            ] as const).map((opt, i) => (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                className={`px-3 py-1.5 transition-colors ${i > 0 ? "border-l border-sky-300" : ""} ${fuenteRx === opt.key ? "bg-sky-600 text-white" : "bg-white/60 text-sky-700 hover:bg-sky-100 dark:bg-transparent dark:text-sky-300"}`}
+                                onClick={() => {
+                                  setFuenteRx(opt.key)
+                                  if (consultaSelId) cargarDesdeConsulta(consultaSelId, opt.key)
+                                }}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <select
+                          className="w-full border border-sky-200 rounded-lg px-3 py-2 text-sm bg-white dark:bg-background"
+                          value={consultaSelId}
+                          onChange={e => cargarDesdeConsulta(e.target.value)}
+                        >
+                          <option value="">— Seleccionar consulta —</option>
+                          {consultasDePaciente.map(c => {
+                            const lc = c.recetas?.find(r => r.tipo === "lente_convencional")
+                            const cl = c.recetas?.find(r => r.tipo === "contactologia")
+                            const preview = fuenteRx === "refraccion"
+                              ? [c.rx_od_esf != null ? `OD: ${Number(c.rx_od_esf) >= 0 ? "+" : ""}${c.rx_od_esf}` : "",
+                                 c.rx_oi_esf != null ? `OI: ${Number(c.rx_oi_esf) >= 0 ? "+" : ""}${c.rx_oi_esf}` : ""].filter(Boolean).join(" / ")
+                              : fuenteRx === "lentes"
+                              ? lc ? [lc.lc_od_esf != null ? `OD: ${Number(lc.lc_od_esf) >= 0 ? "+" : ""}${lc.lc_od_esf}` : "",
+                                       lc.lc_oi_esf != null ? `OI: ${Number(lc.lc_oi_esf) >= 0 ? "+" : ""}${lc.lc_oi_esf}` : ""].filter(Boolean).join(" / ")
+                                    : "sin receta LC"
+                              : cl ? [cl.cl_od_esf != null ? `OD: ${Number(cl.cl_od_esf) >= 0 ? "+" : ""}${cl.cl_od_esf}` : "",
+                                       cl.cl_oi_esf != null ? `OI: ${Number(cl.cl_oi_esf) >= 0 ? "+" : ""}${cl.cl_oi_esf}` : ""].filter(Boolean).join(" / ")
+                                    : "sin receta CL"
+                            return (
+                              <option key={c.id} value={c.id}>
+                                {c.numero} — {c.fecha}{preview ? ` | ${preview}` : ""}{c.diagnostico ? ` | ${c.diagnostico}` : ""}
+                              </option>
+                            )
+                          })}
+                        </select>
+                        {consultaSelId && (
+                          <div className="flex items-center gap-1.5 text-xs text-sky-700 dark:text-sky-300 font-medium">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Prescripción cargada · cada parte usará los ojos seleccionados (OD / OI / Ambos)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="p-4 space-y-4">
-                {/* Tabla OD/OI */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse">
+
+              {/* ══ BLOQUE 2: PRESCRIPCIÓN ══ */}
+              <div className="px-6 py-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground shrink-0">2</div>
+                  <span className="text-sm font-semibold text-foreground">Prescripción óptica</span>
+                </div>
+
+                {/* Tabla RX */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+                  <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-slate-50 text-slate-600">
-                        <th className="border p-2 font-semibold w-12 text-center">Ojo</th>
-                        <th className="border p-2 font-semibold text-center">ESF</th>
-                        <th className="border p-2 font-semibold text-center">CIL</th>
-                        <th className="border p-2 font-semibold text-center">EJE</th>
-                        <th className="border p-2 font-semibold text-center">ADD</th>
-                        <th className="border p-2 font-semibold text-center">PRISMA</th>
-                        <th className="border p-2 font-semibold text-center">DNP</th>
+                      <tr className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                        <th className="px-3 py-2.5 font-semibold text-center border-r border-slate-200 dark:border-slate-700 w-14">Ojo</th>
+                        {["ESF", "CIL", "EJE", "ADD", "PRISMA", "DNP"].map(h => (
+                          <th key={h} className="px-2 py-2.5 font-semibold text-center border-r border-slate-200 dark:border-slate-700 last:border-r-0">{h}</th>
+                        ))}
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                       {(["od", "oi"] as const).map(ojo => (
-                        <tr key={ojo}>
-                          <td className="border p-2 font-bold text-center text-cyan-700 bg-cyan-50 uppercase">{ojo}</td>
+                        <tr key={ojo} className="bg-white dark:bg-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-3 py-2 font-bold text-center border-r border-slate-200 dark:border-slate-700">
+                            <span className={`inline-flex items-center justify-center h-7 w-10 rounded-md text-xs font-bold ${ojo === "od" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"}`}>
+                              {ojo.toUpperCase()}
+                            </span>
+                          </td>
                           {([
                             { f: "esf",    type: "number", step: "0.25",              placeholder: "±0.00" },
                             { f: "cil",    type: "number", step: "0.25",              placeholder: "±0.00" },
@@ -1179,14 +1321,14 @@ export default function Ordenes() {
                             { f: "add",    type: "number", step: "0.25", min: "0",    placeholder: "+0.00" },
                             { f: "prisma", type: "text",                              placeholder: "2Δ BU" },
                             { f: "dnp",    type: "number", step: "0.5",  min: "0",    placeholder: "mm" },
-                          ] as { f: keyof RxOjo; type: string; step?: string; min?: string; max?: string; placeholder: string }[]).map(({ f, type, step, min, max, placeholder }) => (
-                            <td key={f} className="border p-1">
+                          ] as { f: keyof RxOjo; type: string; step?: string; min?: string; max?: string; placeholder: string }[]).map(({ f, type, step, min, max, placeholder }, ci) => (
+                            <td key={f} className={`px-1.5 py-1.5 border-r border-slate-100 dark:border-slate-700 ${ci === 5 ? "border-r-0" : ""}`}>
                               <input
                                 type={type}
                                 step={step}
                                 min={min}
                                 max={max}
-                                className="w-full px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400 rounded"
+                                className="w-full px-2 py-1.5 text-center text-sm bg-transparent focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-primary/5 rounded-md transition-colors"
                                 value={rx[ojo][f as keyof RxOjo]}
                                 onChange={e => setRx(r => ({ ...r, [ojo]: { ...r[ojo], [f]: e.target.value } }))}
                                 placeholder={placeholder}
@@ -1200,294 +1342,381 @@ export default function Ordenes() {
                 </div>
 
                 {/* DP + Material + Tratamiento + Diseño */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">DP (mm)</label>
-                    <Input type="number" step="0.5" min="0" value={rx.dp} onChange={e => setRx(r => ({ ...r, dp: e.target.value }))} placeholder="63" className="text-center mt-1" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Material</label>
-                    <select
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-                      value={rx.material}
-                      onChange={e => setRx(r => ({ ...r, material: e.target.value }))}
-                    >
-                      <option value="">— Seleccionar —</option>
-                      {MATERIALES.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Tratamiento</label>
-                    <select
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-                      value={rx.tratamiento}
-                      onChange={e => setRx(r => ({ ...r, tratamiento: e.target.value }))}
-                    >
-                      <option value="">— Seleccionar —</option>
-                      {TRATAMIENTOS.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Diseño</label>
-                    <select
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-                      value={rx.diseno}
-                      onChange={e => setRx(r => ({ ...r, diseno: e.target.value }))}
-                    >
-                      <option value="">— Seleccionar —</option>
-                      {DISENOS.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                  {[
+                    { label: "DP (mm)", content: <Input type="number" step="0.5" min="0" value={rx.dp} onChange={e => setRx(r => ({ ...r, dp: e.target.value }))} placeholder="63" className="text-center" /> },
+                    { label: "Material", content: (
+                      <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={rx.material} onChange={e => setRx(r => ({ ...r, material: e.target.value }))}>
+                        <option value="">— Seleccionar —</option>
+                        {MATERIALES.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    )},
+                    { label: "Tratamiento", content: (
+                      <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={rx.tratamiento} onChange={e => setRx(r => ({ ...r, tratamiento: e.target.value }))}>
+                        <option value="">— Seleccionar —</option>
+                        {TRATAMIENTOS.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    )},
+                    { label: "Diseño", content: (
+                      <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={rx.diseno} onChange={e => setRx(r => ({ ...r, diseno: e.target.value }))}>
+                        <option value="">— Seleccionar —</option>
+                        {DISENOS.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    )},
+                  ].map(({ label, content }) => (
+                    <div key={label}>
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</label>
+                      <div className="mt-1.5">{content}</div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Diagnóstico</label>
-                    <Input value={rx.diagnostico} onChange={e => setRx(r => ({ ...r, diagnostico: e.target.value }))} placeholder="Miopía, Astigmatismo..." className="mt-1" />
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Diagnóstico</label>
+                    <Input value={rx.diagnostico} onChange={e => setRx(r => ({ ...r, diagnostico: e.target.value }))} placeholder="Miopía, Astigmatismo…" className="mt-1.5" />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Recomendaciones</label>
-                    <Input value={rx.recomendaciones} onChange={e => setRx(r => ({ ...r, recomendaciones: e.target.value }))} placeholder="Uso permanente, lectura..." className="mt-1" />
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recomendaciones</label>
+                    <Input value={rx.recomendaciones} onChange={e => setRx(r => ({ ...r, recomendaciones: e.target.value }))} placeholder="Uso permanente, lectura…" className="mt-1.5" />
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Proveedores / Partes */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-violet-50 px-4 py-2.5 flex items-center justify-between border-b border-violet-100">
-                <span className="text-sm font-semibold text-violet-800 uppercase tracking-wide">
-                  Proveedores
-                  {partes.length > 1 && (
-                    <span className="ml-2 text-xs font-normal text-violet-600 normal-case">
-                      — se crearán {partes.length} órdenes separadas
-                    </span>
-                  )}
-                </span>
-                {!editOrden && (
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-xs text-violet-700 hover:text-violet-900 font-medium"
-                    onClick={() => setPartes(ps => [...ps, newParte("")])}
-                  >
-                    <PlusCircle className="h-4 w-4" /> Agregar proveedor
-                  </button>
-                )}
-              </div>
-              <div className="p-4 space-y-3">
-                {partes.map((parte) => (
-                  <div key={parte._id} className={`rounded-lg border p-3 space-y-2 ${parte.fuente === "stock" ? "bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800" : "bg-slate-50 dark:bg-slate-900/40"}`}>
-                    {/* Header: nombre parte + fuente toggle + eliminar */}
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      {partes.length > 1 ? (
-                        <select
-                          className="border rounded-md px-2 py-1 text-xs bg-background font-semibold"
-                          value={parte.nombre}
-                          onChange={e => setParteField(parte._id, "nombre", e.target.value)}
-                        >
-                          {PARTES_NOMBRES.map(n => <option key={n} value={n}>{n}</option>)}
+              {/* ══ BLOQUE 3: ARMAZÓN + LUNAS (lado a lado) ══ */}
+              <div className="px-6 py-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground shrink-0">3</div>
+                  <span className="text-sm font-semibold text-foreground">Armazón y lunas</span>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+                  {/* Armazón */}
+                  <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Glasses className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">Armazón</span>
+                    </div>
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="text-xs text-muted-foreground">Referencia / Modelo</label>
+                        <Input placeholder="Ej: Ray-Ban RB3025" value={form.armazon_ref} onChange={e => setForm(f => ({ ...f, armazon_ref: e.target.value }))} className="mt-1" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-muted-foreground">Color</label>
+                          <Input placeholder="Ej: Negro mate" value={form.armazon_color} onChange={e => setForm(f => ({ ...f, armazon_color: e.target.value }))} className="mt-1" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Talla</label>
+                          <Input placeholder="52-18-140" value={form.armazon_talla} onChange={e => setForm(f => ({ ...f, armazon_talla: e.target.value }))} className="mt-1" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lunas */}
+                  <div className="rounded-xl border border-cyan-200 dark:border-cyan-800 bg-cyan-50/60 dark:bg-cyan-950/20 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                      <span className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">Especificaciones de lunas</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground">Material</label>
+                        <select value={lunaEspecs.material} onChange={e => setLunaEspecs(s => ({ ...s, material: e.target.value }))}
+                          className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm mt-1">
+                          <option value="">— seleccionar —</option>
+                          <option>CR-39 (Orgánico)</option>
+                          <option>Policarbonato</option>
+                          <option>Trivex</option>
+                          <option>Alto índice 1.60</option>
+                          <option>Alto índice 1.67</option>
+                          <option>Alto índice 1.74</option>
+                          <option>Mineral (vidrio)</option>
                         </select>
-                      ) : (
-                        <span className="text-xs font-semibold text-slate-400 uppercase">Datos del proveedor</span>
-                      )}
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        {/* Ojos selector */}
-                        <div className="flex rounded-md border overflow-hidden text-xs font-medium">
-                          {(["od", "oi", "ao"] as const).map((o, i) => (
-                            <button
-                              key={o}
-                              type="button"
-                              className={`px-2.5 py-1 transition-colors ${i > 0 ? "border-l" : ""} ${parte.ojos === o ? "bg-indigo-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                              onClick={() => setParteField(parte._id, "ojos", o)}
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Índice</label>
+                        <select value={lunaEspecs.indice} onChange={e => setLunaEspecs(s => ({ ...s, indice: e.target.value }))}
+                          className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm mt-1">
+                          <option value="">— seleccionar —</option>
+                          <option>1.50</option><option>1.53</option><option>1.56</option>
+                          <option>1.60</option><option>1.67</option><option>1.74</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Tratamientos</label>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {["Antirreflejo", "Fotocromático", "Polarizado", "BlueCut", "UV400", "Hidrófobo", "Antirrasguño"].map(trat => {
+                          const active = lunaEspecs.tratamientos.includes(trat)
+                          return (
+                            <button key={trat} type="button"
+                              onClick={() => setLunaEspecs(s => ({
+                                ...s,
+                                tratamientos: active ? s.tratamientos.filter(t => t !== trat) : [...s.tratamientos, trat],
+                              }))}
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${active ? "bg-cyan-600 text-white border-cyan-600 shadow-sm" : "bg-background text-muted-foreground border-input hover:border-cyan-400 hover:text-cyan-600"}`}
                             >
-                              {o === "ao" ? "Ambos" : o.toUpperCase()}
+                              {active && <span className="mr-1">✓</span>}{trat}
                             </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground">Color / Tinte</label>
+                        <Input placeholder="Gris, Marrón, Claro…" value={lunaEspecs.color} onChange={e => setLunaEspecs(s => ({ ...s, color: e.target.value }))} className="mt-1 h-8 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground">Diámetro</label>
+                        <Input placeholder="65mm, 70mm…" value={lunaEspecs.diametro} onChange={e => setLunaEspecs(s => ({ ...s, diametro: e.target.value }))} className="mt-1 h-8 text-sm" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ══ BLOQUE 4: PROVEEDOR / LABORATORIO ══ */}
+              <div className="px-6 py-5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground shrink-0">4</div>
+                    <span className="text-sm font-semibold text-foreground">
+                      Proveedor / Laboratorio
+                      {partes.length > 1 && (
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">— se crearán {partes.length} órdenes separadas</span>
+                      )}
+                    </span>
+                  </div>
+                  {!editOrden && (
+                    <button type="button" onClick={() => setPartes(ps => [...ps, newParte("")])}
+                      className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 rounded-lg px-3 py-1.5 transition-colors">
+                      <PlusCircle className="h-3.5 w-3.5" /> Agregar proveedor
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  {partes.map((parte) => (
+                    <div key={parte._id}
+                      className={`rounded-xl border p-4 space-y-3 transition-colors ${parte.fuente === "stock" ? "bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-700" : "bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-800"}`}>
+
+                      {/* Sub-header */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          {partes.length > 1 ? (
+                            <select
+                              className="border rounded-lg px-2 py-1 text-xs bg-background font-semibold"
+                              value={parte.nombre}
+                              onChange={e => setParteField(parte._id, "nombre", e.target.value)}
+                            >
+                              {PARTES_NOMBRES.map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              {parte.fuente === "stock" ? "Desde stock propio" : "Laboratorio externo"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 ml-auto">
+                          {/* Ojos */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">Ojo:</span>
+                            <div className="flex rounded-lg border overflow-hidden text-xs font-semibold shadow-sm">
+                              {(["od", "oi", "ao"] as const).map((o, i) => (
+                                <button key={o} type="button"
+                                  className={`px-2.5 py-1 transition-colors ${i > 0 ? "border-l" : ""} ${parte.ojos === o ? "bg-indigo-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                                  onClick={() => setParteField(parte._id, "ojos", o)}>
+                                  {o === "ao" ? "Ambos" : o.toUpperCase()}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          {/* Fuente */}
+                          <div className="flex rounded-lg border overflow-hidden text-xs font-semibold shadow-sm">
+                            <button type="button"
+                              className={`px-3 py-1 transition-colors ${parte.fuente === "lab" ? "bg-violet-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                              onClick={() => handleParteFuente("lab", parte._id)}>
+                              Lab
+                            </button>
+                            <button type="button"
+                              className={`px-3 py-1 transition-colors border-l ${parte.fuente === "stock" ? "bg-emerald-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                              onClick={() => handleParteFuente("stock", parte._id)}>
+                              Stock
+                            </button>
+                          </div>
+                          {partes.length > 1 && (
+                            <button type="button" className="text-red-400 hover:text-red-600 p-1" onClick={() => setPartes(ps => ps.filter(p => p._id !== parte._id))}>
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Producto del inventario */}
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">
+                          {parte.fuente === "stock" ? "Producto del inventario *" : "Vincular producto del inventario (opcional)"}
+                        </label>
+                        <select
+                          className="w-full border rounded-lg px-3 py-2 text-sm bg-background mt-1"
+                          value={parte.producto_id}
+                          onChange={e => handleParteProductoChange(e.target.value, parte._id)}
+                        >
+                          <option value="">— Sin producto vinculado —</option>
+                          {productosMini.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.nombre} — Stock: {Math.floor(p.stock_actual ?? 0)} | Costo: ${(p.precio_costo ?? 0).toFixed(2)}
+                            </option>
                           ))}
+                        </select>
+                      </div>
+
+                      {/* Campos lab */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {parte.fuente === "lab" && (
+                          <>
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground">Proveedor del sistema</label>
+                              <select
+                                className="w-full border rounded-lg px-2 py-2 text-sm bg-background mt-1"
+                                value={parte.proveedor_id}
+                                onChange={e => handleParteProveedorChange(e.target.value, parte._id)}
+                              >
+                                <option value="">— Texto libre —</option>
+                                {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground">Nombre del laboratorio *</label>
+                              <Input value={parte.lab_proveedor} onChange={e => setParteField(parte._id, "lab_proveedor", e.target.value)} placeholder="Nombre del lab" className="mt-1" />
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-muted-foreground">WhatsApp del lab</label>
+                              <Input value={parte.lab_telefono} onChange={e => setParteField(parte._id, "lab_telefono", e.target.value)} placeholder="0999123456" className="mt-1" />
+                            </div>
+                          </>
+                        )}
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">Entrega estimada</label>
+                          <Input type="date" value={parte.fecha_entrega_est} onChange={e => setParteField(parte._id, "fecha_entrega_est", e.target.value)} className="mt-1" />
                         </div>
-                        {/* Fuente toggle */}
-                        <div className="flex rounded-md border overflow-hidden text-xs font-medium">
-                          <button
-                            type="button"
-                            className={`px-2.5 py-1 transition-colors ${parte.fuente === "lab" ? "bg-violet-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                            onClick={() => handleParteFuente("lab", parte._id)}
-                          >
-                            Lab
-                          </button>
-                          <button
-                            type="button"
-                            className={`px-2.5 py-1 transition-colors border-l ${parte.fuente === "stock" ? "bg-emerald-600 text-white" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                            onClick={() => handleParteFuente("stock", parte._id)}
-                          >
-                            Stock
-                          </button>
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">{parte.fuente === "stock" ? "Precio costo ($)" : "Precio lab ($)"}</label>
+                          <Input type="number" step="0.01" min="0" value={parte.precio_lab} onChange={e => setParteField(parte._id, "precio_lab", e.target.value)} placeholder="0.00" className="mt-1" />
                         </div>
-                        {partes.length > 1 && (
-                          <button type="button" className="text-red-400 hover:text-red-600 ml-1" onClick={() => setPartes(ps => ps.filter(p => p._id !== parte._id))}>
-                            <Trash2 className="h-4 w-4" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ══ BLOQUE 5: PRECIOS AL CLIENTE ══ */}
+              <div className="px-6 py-5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground shrink-0">5</div>
+                    <span className="text-sm font-semibold text-foreground">Precios al cliente</span>
+                  </div>
+                  <button type="button" onClick={addPrecioItem}
+                    className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 rounded-lg px-3 py-1.5 transition-colors">
+                    <Plus className="h-3.5 w-3.5" /> Agregar ítem
+                  </button>
+                </div>
+
+                <div className="rounded-xl border overflow-hidden">
+                  {/* Header tabla */}
+                  <div className="grid grid-cols-[1fr_140px_36px] gap-0 bg-slate-50 dark:bg-slate-800 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b">
+                    <span>Concepto</span>
+                    <span className="text-right pr-2">Precio</span>
+                    <span />
+                  </div>
+                  {/* Filas */}
+                  {precioItems.map((it, idx) => (
+                    <div key={it.id} className="grid grid-cols-[1fr_140px_36px] gap-0 items-center border-b last:border-b-0 px-3 py-2 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                      <input
+                        placeholder={idx === 0 ? "Armazón" : idx === 1 ? "Lunas" : "Concepto…"}
+                        value={it.descripcion}
+                        onChange={e => setPrecioItem(it.id, "descripcion", e.target.value)}
+                        className="text-sm bg-transparent border-none outline-none w-full placeholder:text-muted-foreground/50 focus:bg-blue-50/50 dark:focus:bg-blue-950/20 rounded px-1 py-0.5"
+                      />
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">$</span>
+                        <input
+                          type="number" step="0.01" min="0" placeholder="0.00"
+                          value={it.monto}
+                          onChange={e => setPrecioItem(it.id, "monto", e.target.value)}
+                          className="w-full text-sm text-right pr-2 pl-6 py-1 bg-transparent border-none outline-none focus:bg-blue-50/50 dark:focus:bg-blue-950/20 rounded"
+                        />
+                      </div>
+                      <div className="flex justify-center">
+                        {precioItems.length > 1 && (
+                          <button type="button" onClick={() => removePrecioItem(it.id)}
+                            className="text-muted-foreground/40 hover:text-destructive transition-colors p-1 rounded">
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </div>
                     </div>
-
-                    {/* Producto del inventario */}
-                    <div>
-                      <label className="text-xs text-slate-500">
-                        {parte.fuente === "stock" ? "Producto del inventario *" : "Producto del inventario (opcional)"}
-                      </label>
-                      <select
-                        className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5"
-                        value={parte.producto_id}
-                        onChange={e => handleParteProductoChange(e.target.value, parte._id)}
-                      >
-                        <option value="">— Sin producto vinculado —</option>
-                        {productosMini.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.nombre} — Stock: {Math.floor(p.stock_actual ?? 0)} | Costo: ${(p.precio_costo ?? 0).toFixed(2)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Campos de lab (ocultos si fuente=stock) */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {parte.fuente === "lab" && (
-                        <>
-                          <div>
-                            <label className="text-xs text-slate-500">Proveedor del sistema</label>
-                            <select
-                              className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5"
-                              value={parte.proveedor_id}
-                              onChange={e => handleParteProveedorChange(e.target.value, parte._id)}
-                            >
-                              <option value="">— Texto libre —</option>
-                              {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs text-slate-500">Lab / Nombre *</label>
-                            <Input
-                              value={parte.lab_proveedor}
-                              onChange={e => setParteField(parte._id, "lab_proveedor", e.target.value)}
-                              placeholder="Nombre del laboratorio"
-                              className="mt-0.5"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-slate-500">WhatsApp lab</label>
-                            <Input
-                              value={parte.lab_telefono}
-                              onChange={e => setParteField(parte._id, "lab_telefono", e.target.value)}
-                              placeholder="0999123456"
-                              className="mt-0.5"
-                            />
-                          </div>
-                        </>
-                      )}
-                      <div>
-                        <label className="text-xs text-slate-500">Entrega estimada</label>
-                        <Input
-                          type="date"
-                          value={parte.fecha_entrega_est}
-                          onChange={e => setParteField(parte._id, "fecha_entrega_est", e.target.value)}
-                          className="mt-0.5"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500">
-                          {parte.fuente === "stock" ? "Precio costo ($)" : "Precio lab ($)"}
-                        </label>
-                        <Input
-                          type="number" step="0.01" min="0"
-                          value={parte.precio_lab}
-                          onChange={e => setParteField(parte._id, "precio_lab", e.target.value)}
-                          placeholder="0.00"
-                          className="mt-0.5"
-                        />
-                      </div>
-                    </div>
+                  ))}
+                  {/* Total */}
+                  <div className="grid grid-cols-[1fr_140px_36px] items-center bg-primary/5 dark:bg-primary/10 px-4 py-3 border-t">
+                    <span className="text-sm font-semibold text-foreground">Total</span>
+                    <span className="text-right text-lg font-bold text-primary pr-2">
+                      {precioTotal > 0 ? `$${precioTotal.toFixed(2)}` : <span className="text-muted-foreground text-sm font-normal">—</span>}
+                    </span>
+                    <span />
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
 
-            {/* Armazón */}
-            <div className="border rounded-xl p-3 bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800 space-y-2">
-              <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">Armazón</p>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="text-xs text-muted-foreground">Referencia / Modelo</label>
-                  <Input
-                    placeholder="Ej: Ray-Ban RB3025"
-                    value={form.armazon_ref}
-                    onChange={e => setForm(f => ({ ...f, armazon_ref: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Color</label>
-                  <Input
-                    placeholder="Ej: Negro mate"
-                    value={form.armazon_color}
-                    onChange={e => setForm(f => ({ ...f, armazon_color: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground">Talla</label>
-                  <Input
-                    placeholder="Ej: 52-18-140"
-                    value={form.armazon_talla}
-                    onChange={e => setForm(f => ({ ...f, armazon_talla: e.target.value }))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Precios y proforma */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Precio de venta al cliente ($)</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  value={form.precio_venta}
-                  onChange={e => setForm(f => ({ ...f, precio_venta: e.target.value }))}
-                />
-              </div>
-              <div className="flex items-end pb-1">
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                {/* Proforma */}
+                <label className="flex items-center gap-3 mt-4 p-3 rounded-xl border border-dashed border-muted-foreground/30 cursor-pointer hover:bg-muted/30 transition-colors">
                   <input
                     type="checkbox"
                     checked={form.es_proforma}
                     onChange={e => setForm(f => ({ ...f, es_proforma: e.target.checked }))}
-                    className="w-4 h-4 rounded"
+                    className="h-4 w-4 rounded"
                   />
-                  <span className="font-medium">Marcar como Proforma</span>
-                  <span className="text-xs text-muted-foreground">(no genera venta)</span>
+                  <div>
+                    <span className="text-sm font-medium">Marcar como Proforma</span>
+                    <p className="text-xs text-muted-foreground">La orden no generará venta hasta que sea convertida manualmente</p>
+                  </div>
                 </label>
               </div>
-            </div>
 
-            {/* Notas internas */}
-            <div>
-              <label className="text-sm font-medium">Notas internas</label>
-              <textarea
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none mt-1"
-                rows={2}
-                value={form.notas}
-                onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
-                placeholder="Urgente, color del armazón, instrucciones especiales..."
-              />
+              {/* ══ BLOQUE 6: NOTAS ══ */}
+              <div className="px-6 py-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground shrink-0">6</div>
+                  <span className="text-sm font-semibold text-foreground">Notas internas</span>
+                </div>
+                <textarea
+                  className="w-full border rounded-xl px-4 py-3 text-sm bg-background resize-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+                  rows={2}
+                  value={form.notas}
+                  onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
+                  placeholder="Urgente · instrucciones especiales · observaciones para el lab…"
+                />
+              </div>
+
             </div>
           </DialogBody>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpenForm(false)}>Cancelar</Button>
-            <Button type="submit" disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-              {editOrden ? "Guardar cambios" : partes.length > 1 ? `Crear ${partes.length} órdenes` : "Crear orden"}
-            </Button>
-          </DialogFooter>
+          {/* ── Footer ── */}
+          <div className="flex items-center justify-between px-6 py-4 border-t bg-slate-50/80 dark:bg-slate-900/50">
+            <span className="text-xs text-muted-foreground">
+              {editOrden ? "Los cambios se guardan en la orden existente" : partes.length > 1 ? `Se crearán ${partes.length} órdenes de trabajo` : "Se creará 1 orden de trabajo"}
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setOpenForm(false)}>Cancelar</Button>
+              <Button type="submit" disabled={saving} className="min-w-[130px]">
+                {saving && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+                {editOrden ? "Guardar cambios" : partes.length > 1 ? `Crear ${partes.length} órdenes` : "Crear orden"}
+              </Button>
+            </div>
+          </div>
         </form>
       </Dialog>
     </div>

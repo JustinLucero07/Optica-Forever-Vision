@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
@@ -68,9 +68,18 @@ export default function CajaDiaria() {
   })
 
   const { register: regAp, handleSubmit: hsAp, reset: resetAp } = useForm<{ saldo_apertura: string; notas_apertura: string }>()
-  const { register: regCi, handleSubmit: hsCi, reset: resetCi } = useForm<{
+  const { register: regCi, handleSubmit: hsCi, reset: resetCi, setValue: setCiVal } = useForm<{
     total_efectivo: string; total_tarjeta: string; total_transferencia: string; notas_cierre: string
   }>()
+
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const { data: cobrosHoy = [] } = useQuery<{ metodo_pago: string; monto: number }[]>({
+    queryKey: ["cobros-hoy-metodo", todayISO],
+    queryFn: () => api.get("/cobros", { params: { fecha_from: todayISO, fecha_to: todayISO, limit: 500 } })
+      .then(r => (Array.isArray(r.data) ? r.data : r.data.items ?? [])),
+    enabled: dialogCierre,
+    staleTime: 0,
+  })
 
   const aperturaMut = useMutation({
     mutationFn: (d: any) => api.post("/caja/apertura", {
@@ -86,6 +95,18 @@ export default function CajaDiaria() {
     },
     onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
   })
+
+  useEffect(() => {
+    if (!dialogCierre || cobrosHoy.length === 0) return
+    const sum = (method: string) =>
+      cobrosHoy.filter((c: any) => c.metodo_pago === method).reduce((s: number, c: any) => s + Number(c.monto), 0)
+    const ef = sum("efectivo")
+    const ta = sum("tarjeta")
+    const tr = sum("transferencia")
+    if (ef > 0) setCiVal("total_efectivo", ef.toFixed(2))
+    if (ta > 0) setCiVal("total_tarjeta", ta.toFixed(2))
+    if (tr > 0) setCiVal("total_transferencia", tr.toFixed(2))
+  }, [dialogCierre, cobrosHoy])
 
   const cierreMut = useMutation({
     mutationFn: (d: any) => api.post(`/caja/${hoy?.caja?.id}/cierre`, {
@@ -107,7 +128,7 @@ export default function CajaDiaria() {
   const caja = hoy?.caja
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-3 sm:p-6 space-y-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -184,7 +205,8 @@ export default function CajaDiaria() {
         {cargandoHist ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Cargando…</div>
         ) : (
-          <div className="bg-card rounded-xl border overflow-hidden">
+          <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/40">
@@ -223,6 +245,7 @@ export default function CajaDiaria() {
                 })}
               </tbody>
             </table>
+        </div>
           </div>
         )}
       </div>

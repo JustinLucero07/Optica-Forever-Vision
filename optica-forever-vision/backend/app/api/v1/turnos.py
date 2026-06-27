@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -34,6 +34,21 @@ def listar_turnos(
     if estado:
         stmt = stmt.where(Turno.estado == estado)
     return db.execute(stmt.offset(skip).limit(limit)).scalars().all()
+
+
+@router.get("/count")
+def contar_turnos(
+    fecha: date | None = None,
+    estado: str | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    stmt = select(func.count()).select_from(Turno)
+    if fecha:
+        stmt = stmt.where(Turno.fecha == fecha)
+    if estado:
+        stmt = stmt.where(Turno.estado == estado)
+    return {"total": db.execute(stmt).scalar_one()}
 
 
 @router.post("", response_model=TurnoOut, status_code=status.HTTP_201_CREATED)

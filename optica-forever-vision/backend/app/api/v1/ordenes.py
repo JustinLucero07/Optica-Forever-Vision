@@ -1,6 +1,6 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,7 @@ router = APIRouter(prefix="/ordenes", tags=["ordenes"])
 def listar_ordenes(
     paciente_id: int | None = None,
     estado: str | None = None,
+    venta_id: int | None = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -31,7 +32,25 @@ def listar_ordenes(
         stmt = stmt.where(OrdenTrabajo.paciente_id == paciente_id)
     if estado:
         stmt = stmt.where(OrdenTrabajo.estado == estado)
+    if venta_id:
+        stmt = stmt.where(OrdenTrabajo.venta_id == venta_id)
     return db.execute(stmt.offset(skip).limit(limit)).scalars().all()
+
+
+@router.get("/count")
+def contar_ordenes(
+    excluir_estados: str | None = None,
+    es_proforma: bool | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    stmt = select(func.count()).select_from(OrdenTrabajo)
+    if excluir_estados:
+        for s in excluir_estados.split(","):
+            stmt = stmt.where(OrdenTrabajo.estado != s.strip())
+    if es_proforma is not None:
+        stmt = stmt.where(OrdenTrabajo.es_proforma == es_proforma)
+    return {"total": db.execute(stmt).scalar_one()}
 
 
 @router.post("", response_model=OrdenOut, status_code=status.HTTP_201_CREATED)

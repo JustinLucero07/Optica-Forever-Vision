@@ -219,8 +219,8 @@ export default function Pacientes() {
   })
 
   return (
-    <div className="p-6 space-y-5 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
+    <div className="p-3 sm:p-6 space-y-5 max-w-7xl mx-auto">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Pacientes</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{pacientes.length} registros encontrados</p>
@@ -344,6 +344,7 @@ export default function Pacientes() {
       </div>
 
       <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/40">
@@ -406,6 +407,7 @@ export default function Pacientes() {
             ))}
           </tbody>
         </table>
+        </div>
         <Paginador page={page} total={pacientesSorted.length} perPage={perPage} onChange={setPage} onPerPageChange={n => { setPerPage(n); setPage(1) }} />
       </div>
       </>}

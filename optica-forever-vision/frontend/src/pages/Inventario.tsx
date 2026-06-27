@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { Plus, Search, Pencil, Package, Loader2, AlertTriangle, ArrowDown, Tag, Trash2 } from "lucide-react"
+import { deleteWithUndo } from "@/lib/confirm"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -148,7 +149,7 @@ export default function Inventario() {
   const stockBajoCount = productos.filter(p => p.stock_actual <= p.stock_minimo).length
 
   return (
-    <div className="p-6 space-y-5 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-6 space-y-5 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Inventario</h1>
@@ -169,7 +170,7 @@ export default function Inventario() {
         )}
       </div>
 
-      <div className="flex gap-3 items-center">
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input placeholder="Buscar por nombre o código…" className="pl-10 rounded-xl" value={busqueda}
@@ -183,6 +184,7 @@ export default function Inventario() {
       </div>
 
       <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/40">
@@ -243,6 +245,7 @@ export default function Inventario() {
             ))}
           </tbody>
         </table>
+        </div>
         <Paginador page={page} total={productos.length} perPage={perPage} onChange={setPage} onPerPageChange={n => { setPerPage(n); setPage(1) }} />
       </div>
 
@@ -356,7 +359,7 @@ export default function Inventario() {
                     </button>
                     <button
                       className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                      onClick={() => { if (confirm(`¿Eliminar categoría "${c.nombre}"?`)) eliminarCatMut.mutate(c.id) }}
+                      onClick={() => deleteWithUndo(`Categoría "${c.nombre}" eliminada`, () => eliminarCatMut.mutate(c.id))}
                       title="Eliminar"
                       disabled={eliminarCatMut.isPending}
                     >

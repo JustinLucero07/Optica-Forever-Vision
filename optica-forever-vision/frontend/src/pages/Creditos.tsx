@@ -288,7 +288,7 @@ export default function Creditos() {
   }, {})
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-3 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -337,6 +337,7 @@ export default function Creditos() {
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : (
         <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr className="border-b">
@@ -394,6 +395,7 @@ export default function Creditos() {
                           <div className="space-y-2">
                             <p className="text-xs font-semibold text-muted-foreground">CUOTAS</p>
                             <div className="rounded-md border overflow-hidden">
+                              <div className="overflow-x-auto">
                               <table className="w-full text-xs">
                                 <thead className="bg-muted/40">
                                   <tr>
@@ -431,6 +433,7 @@ export default function Creditos() {
                                   ))}
                                 </tbody>
                               </table>
+        </div>
                             </div>
                           </div>
                         )}
@@ -441,6 +444,7 @@ export default function Creditos() {
               ))}
             </tbody>
           </table>
+        </div>
           <Paginador page={page} total={creditosFiltrados.length} perPage={PER_PAGE} onChange={setPage} onPerPageChange={n => { setPER_PAGE(n); setPage(1) }} />
         </div>
       )}

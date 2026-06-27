@@ -116,8 +116,8 @@ export default function Ventas() {
   const thClass = "text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide select-none cursor-pointer hover:text-foreground transition-colors"
 
   return (
-    <div className="p-6 space-y-5 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
+    <div className="p-3 sm:p-6 space-y-5 max-w-7xl mx-auto">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Ventas</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{ventas.length} registros · Total: <span className="font-semibold text-foreground">${total.toFixed(2)}</span></p>
@@ -155,6 +155,7 @@ export default function Ventas() {
       </div>
 
       <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/40">
@@ -232,6 +233,7 @@ export default function Ventas() {
             })}
           </tbody>
         </table>
+        </div>
         <Paginador page={page} total={sorted.length} perPage={perPage} onChange={setPage} onPerPageChange={n => { setPerPage(n); setPage(1) }} />
       </div>
 

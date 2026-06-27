@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, Loader2, Printer, DollarSign } from "lucide-react"
+import { ArrowLeft, Loader2, Printer, DollarSign, FlaskConical } from "lucide-react"
+import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { toast } from "sonner"
 
 import { api } from "@/lib/api"
@@ -150,6 +151,14 @@ export default function VentaDetalle() {
     staleTime: 60_000,
   })
 
+  const { data: ordenAsociada } = useQuery<{ id: number; numero: string; tipo: string; estado: string } | null>({
+    queryKey: ["orden-de-venta", id],
+    queryFn: () => api.get("/ordenes", { params: { venta_id: Number(id), limit: 1 } })
+      .then(r => (Array.isArray(r.data) && r.data.length > 0 ? r.data[0] : null)),
+    enabled: !!id,
+    staleTime: 60_000,
+  })
+
   const cobroMut = useMutation({
     mutationFn: () => api.post("/cobros", {
       venta_id: Number(id),
@@ -199,10 +208,15 @@ export default function VentaDetalle() {
   const nombrePac = paciente ? `${paciente.apellidos} ${paciente.nombres}` : undefined
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
+      <Breadcrumb crumbs={[
+        { label: "Ventas", to: "/ventas" },
+        ...(nombrePac ? [{ label: nombrePac, to: `/pacientes/${v.paciente_id}` }] : []),
+        { label: v.numero },
+      ]} />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(-1)} title="Volver">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -215,9 +229,18 @@ export default function VentaDetalle() {
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => printComprobante(v, paciente ?? null, abonado)}>
-          <Printer className="h-4 w-4 mr-1" /> Comprobante
-        </Button>
+        <div className="flex gap-2 items-center">
+          {ordenAsociada && (
+            <Button variant="outline" size="sm" onClick={() => navigate("/ordenes")}
+              title={`Orden ${ordenAsociada.numero} — ${ordenAsociada.tipo}`}>
+              <FlaskConical className="h-4 w-4 mr-1 text-violet-500" />
+              Orden {ordenAsociada.numero}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => printComprobante(v, paciente ?? null, abonado)}>
+            <Printer className="h-4 w-4 mr-1" /> Comprobante
+          </Button>
+        </div>
       </div>
 
       {/* ── Alerta de cobro pendiente ── */}

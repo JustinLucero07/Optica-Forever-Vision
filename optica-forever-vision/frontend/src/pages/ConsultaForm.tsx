@@ -230,9 +230,16 @@ export default function ConsultaForm() {
       if (esNueva) localStorage.removeItem(draftKey)
       toast.success(esNueva ? "Consulta creada" : "Consulta actualizada")
       const proxControl = res.data.proximo_control
-      if (esNueva && proxControl &&
-        window.confirm(`¿Agendar turno de control para el ${proxControl}?`)) {
-        navigate("/turnos", { state: { fromConsulta: { paciente_id: Number(pacienteId), fecha: proxControl, motivo: "Control visual" } } })
+      if (esNueva && proxControl) {
+        toast.success("Consulta guardada", {
+          description: `Próximo control: ${proxControl}`,
+          action: {
+            label: "Agendar turno",
+            onClick: () => navigate("/turnos", { state: { fromConsulta: { paciente_id: Number(pacienteId), fecha: proxControl, motivo: "Control visual" } } }),
+          },
+          duration: 8000,
+        })
+        navigate(`/consultas/${res.data.id}`)
       } else {
         navigate(`/consultas/${res.data.id}`)
       }

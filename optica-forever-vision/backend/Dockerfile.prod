@@ -4,32 +4,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev curl \
- && rm -rf /var/lib/apt/lists/* \
- && groupadd -r app && useradd -r -g app app
-
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libpq-dev curl \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install ".[redis]" && pip install gunicorn
+RUN pip install --upgrade pip && pip install -e ".[redis]"
 
 COPY . .
 
-RUN chown -R app:app /app
-
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-USER app
-
 EXPOSE 8000
 
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["gunicorn", "app.main:app", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--workers", "2", \
-     "--bind", "0.0.0.0:8000", \
-     "--timeout", "120", \
-     "--access-logfile", "-", \
-     "--error-logfile", "-"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

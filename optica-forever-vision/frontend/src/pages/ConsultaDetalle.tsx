@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { ArrowLeft, Pencil, Loader2, Printer, Copy, CalendarPlus, FlaskConical, ShoppingCart } from "lucide-react"
+import { Breadcrumb } from "@/components/ui/breadcrumb"
 
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -238,7 +239,7 @@ export default function ConsultaDetalle() {
 
   if (isLoading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Cargando…</div>
   if (isError) return (
-    <div className="p-6 space-y-2">
+    <div className="p-3 sm:p-6 space-y-2">
       <p className="text-destructive font-semibold">Error al cargar la consulta</p>
       <p className="text-sm text-muted-foreground">Es posible que la migración de base de datos pendiente no se haya ejecutado.</p>
       <code className="block text-xs bg-muted px-3 py-2 rounded mt-1">sudo docker exec optica-forever-vision-backend-1 alembic upgrade head</code>
@@ -251,10 +252,15 @@ export default function ConsultaDetalle() {
   const nombrePac = paciente ? `${paciente.apellidos}, ${paciente.nombres}` : `Paciente #${c.paciente_id}`
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-6">
+      <Breadcrumb crumbs={[
+        { label: "Pacientes", to: "/pacientes" },
+        { label: nombrePac, to: `/pacientes/${c.paciente_id}` },
+        { label: `Consulta ${c.numero}` },
+      ]} />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(-1)} title="Volver">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
