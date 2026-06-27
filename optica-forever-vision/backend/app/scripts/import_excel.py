@@ -615,11 +615,66 @@ def import_cxp(db: Session, ws) -> None:
     print(f"  → {created} creadas, {skipped} omitidas")
 
 
-# ── paso 8: consultas ─────────────────────────────────────────────────────────
-# bdConsulta: col C=key, D=keyPaciente, E=fecha, F=resumen, G-Z=anamnesis (texto libre)
+# ── paso 8: laboratorios → proveedores ────────────────────────────────────────
 
-def import_consultas(db: Session, ws, pac_map: dict[str, int]) -> None:
-    print("\n[8] Consultas (bdConsulta)...")
+def import_laboratorios(db: Session, ws) -> None:
+    from app.models.proveedor import Proveedor
+    print("\n[8] Laboratorios → Proveedores (Registro Laboratorios)...")
+    created = skipped = 0
+
+    for row in _all_rows(ws):
+        if len(row) < 3:
+            continue
+        key    = _str(row[0])          # columna A
+        nombre = _str(row[1], 150)     # columna B
+        tel    = _str(row[2], 20) if len(row) > 2 else None  # columna C
+
+        if not nombre or not key.startswith("Lab"):
+            continue
+
+        ya = db.execute(
+            select(Proveedor).where(Proveedor.nombre == nombre).limit(1)
+        ).scalars().first()
+        if ya:
+            skipped += 1
+            continue
+
+        db.add(Proveedor(nombre=nombre.title(), tipo="laboratorio", telefono=tel, activo=True))
+        created += 1
+
+    db.commit()
+    print(f"  → {created} creados, {skipped} ya existían")
+
+
+# ── paso 9: consultas ─────────────────────────────────────────────────────────
+# bdConsulta: col C=key, D=keyPaciente, E=fecha, F=motivo
+# Rx cols (0-indexed): 111=rx_od_esf, 112=rx_od_cil, 113=rx_od_eje, 114=rx_od_add
+#                      115=rx_oi_esf, 116=rx_oi_cil, 117=rx_oi_eje, 118=rx_oi_add
+# AV cols: 129=avsc_od, 130=avsc_oi, 131=avcc_ao
+# Otros:   133=tipo_armadura, 134=plan2, 135=tipo_lente, 136=diagnostico, 137=plan1, 138=observaciones
+# (índices tomados de migrar.py original)
+
+def _rx_float(row: tuple, idx: int) -> "Decimal | None":
+    if len(row) <= idx or row[idx] is None:
+        return None
+    s = str(row[idx]).strip()
+    if s in ("", "None", "-", ".", "N", "PLANO", "PL"):
+        return Decimal("0") if s in ("N", "PLANO", "PL", "0") else None
+    try:
+        return Decimal(s.replace(",", "."))
+    except Exception:
+        return None
+
+def _rx_eje(row: tuple, idx: int) -> "int | None":
+    if len(row) <= idx or row[idx] is None:
+        return None
+    try:
+        return int(float(str(row[idx]).replace(",", ".")))
+    except Exception:
+        return None
+
+def import_consultas(db: Session, ws, pac_map: dict[str, int], admin_id: int) -> None:
+    print("\n[9] Consultas (bdConsulta)...")
 
     existing_max = db.execute(
         text("SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)), 0) FROM consultas WHERE numero LIKE 'CON-%'")
@@ -636,36 +691,58 @@ def import_consultas(db: Session, ws, pac_map: dict[str, int]) -> None:
 
         numero = f"CON-{str(counter).zfill(4)}"
 
-        # Idempotencia: verificar si ya existe una consulta importada con ese numero origen
         existing = db.execute(
-            select(Consulta).where(Consulta.numero == numero)
-        ).scalar_one_or_none()
+            select(Consulta).where(Consulta.numero == numero).limit(1)
+        ).scalars().first()
         if existing:
             skipped += 1
             counter += 1
             continue
 
         pac_key = _str(row[3])                    # columna D
-        fecha   = _date(row[4]) or date.today()   # columna E
-        resumen = _str(row[5], 500) if len(row) > 5 else None  # columna F
+        pac_id  = pac_map.get(pac_key)
+        if not pac_id:
+            skipped += 1
+            continue
 
-        # Columnas G en adelante: respuestas de anamnesis → concatenar como observaciones
-        extras = [_str(row[i], 200) for i in range(6, min(len(row), 24)) if row[i] is not None and _str(row[i])]
-        observaciones = " | ".join(extras) if extras else None
+        fecha   = _date(row[4]) or date.today()   # columna E
+        motivo  = _str(row[5], 500) if len(row) > 5 else None  # columna F
+
+        # Rx data — índices exactos del migrar.py original
+        plan = " | ".join(filter(None, [
+            _str(row[137], 500) if len(row) > 137 else None,
+            _str(row[134], 200) if len(row) > 134 else None,
+        ])) or None
 
         c = Consulta(
             numero=numero,
-            paciente_id=pac_map.get(pac_key),
+            paciente_id=pac_id,
+            optometrista_id=admin_id,
             fecha=fecha,
-            motivo_consulta=resumen or observaciones,
-            antecedentes=observaciones,
+            motivo_consulta=motivo,
+            avsc_od=_str(row[129], 20) if len(row) > 129 else None,
+            avsc_oi=_str(row[130], 20) if len(row) > 130 else None,
+            avcc_ao=_str(row[131], 20) if len(row) > 131 else None,
+            rx_od_esf=_rx_float(row, 111),
+            rx_od_cil=_rx_float(row, 112),
+            rx_od_eje=_rx_eje(row, 113),
+            rx_od_add=_rx_float(row, 114),
+            rx_oi_esf=_rx_float(row, 115),
+            rx_oi_cil=_rx_float(row, 116),
+            rx_oi_eje=_rx_eje(row, 117),
+            rx_oi_add=_rx_float(row, 118),
+            diagnostico=_str(row[136], 500) if len(row) > 136 else None,
+            plan_tratamiento=plan,
+            observaciones=_str(row[138], 500) if len(row) > 138 else None,
+            tipo_lente=_str(row[135], 100) if len(row) > 135 else None,
+            tipo_armadura=_str(row[133], 100) if len(row) > 133 else None,
         )
         db.add(c)
         counter += 1
         created += 1
 
     db.commit()
-    print(f"  → {created} creadas, {skipped} ya existían")
+    print(f"  → {created} creadas, {skipped} omitidas")
 
 
 # ── paso 9: créditos (Cxc) ────────────────────────────────────────────────────
@@ -678,7 +755,7 @@ def import_creditos(
     pac_map: dict[str, int],
     venta_map: dict[str, int],
 ) -> None:
-    print("\n[9] Créditos (Cxc)...")
+    print("\n[10] Créditos (Cxc)...")
 
     existing_max = db.execute(
         text("SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)), 0) FROM creditos WHERE numero LIKE 'CXC-%'")
@@ -751,11 +828,87 @@ def import_creditos(
     print(f"  → {created} creados, {skipped} omitidos")
 
 
+# ── paso 11: ingresos de caja (Cuentas.xlsx → INGRESOS) ──────────────────────
+# Migra cobros sin venta asociada (caja diaria), igual que migrar_cuentas.py
+# Columnas: FECHA(0) | NOMBRE(1) | APELLIDO(2) | PRODUCTO(3) | CANT(4) | PRECIO(5) | INGRESO(6) | DESC(7+)
+
+def _detect_metodo(row: tuple, start: int = 7) -> str:
+    for i in range(start, len(row)):
+        s = str(row[i] or "").strip().lower()
+        if "transfer" in s or "depos" in s:
+            return "transferencia"
+        if "tarjet" in s:
+            return "tarjeta_debito"
+        if "chequ" in s:
+            return "cheque"
+        if "efectivo" in s:
+            return "efectivo"
+    return "efectivo"
+
+def import_cobros_caja(db: Session, ws, cuentas: dict[str, int], admin_id: int) -> None:
+    print("\n[11] Cobros de caja (Cuentas.xlsx → INGRESOS)...")
+
+    cuenta_id = (
+        cuentas.get("Efectivo")
+        or next(iter(cuentas.values()))
+    )
+    created = skipped = 0
+
+    for row in _all_rows(ws):
+        if len(row) < 7:
+            continue
+        fecha  = _date(row[0])
+        nombre = _str(row[1], 100)
+        if not fecha or not nombre:
+            skipped += 1
+            continue
+        if "anterior" in nombre.lower():
+            skipped += 1
+            continue
+        monto = _dec(row[6]) if len(row) > 6 else Decimal("0")
+        if monto <= 0:
+            skipped += 1
+            continue
+
+        apell    = _str(row[2], 100) if len(row) > 2 else None
+        prod     = _str(row[3], 100) if len(row) > 3 else None
+        cliente  = " ".join(filter(None, [nombre, apell])) or "Cliente"
+        concepto = f"{cliente} — {prod or 'Ingreso'}"
+        metodo   = _detect_metodo(row, 7)
+
+        # Idempotencia: comparar fecha + monto + concepto
+        ya = db.execute(
+            select(Cobro).where(
+                Cobro.fecha == fecha,
+                Cobro.monto == monto,
+                Cobro.concepto == concepto[:200],
+                Cobro.venta_id.is_(None),
+            ).limit(1)
+        ).scalars().first()
+        if ya:
+            skipped += 1
+            continue
+
+        db.add(Cobro(
+            venta_id=None,
+            cuenta_bancaria_id=cuenta_id,
+            fecha=fecha,
+            monto=monto,
+            metodo_pago=metodo,
+            concepto=concepto[:200],
+            creado_por=admin_id,
+        ))
+        created += 1
+
+    db.commit()
+    print(f"  → {created} creados, {skipped} omitidos")
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def run() -> None:
     print("=" * 60)
-    print("  Importador Fase 6 — Óptica Forever Vision")
+    print("  Importador — Óptica Forever Vision")
     print("=" * 60)
 
     db = SessionLocal()
@@ -786,30 +939,36 @@ def run() -> None:
         import_cobros(db, wb_optica["bdIngresos"], venta_map, cuentas, admin.id)
         import_egresos(db, wb_cuentas["EGRESOS"], cuentas, admin.id)
         import_cxp(db, wb_cuentas["FACTURAS"])
-        import_consultas(db, wb_optica["bdConsulta"], pac_map)
+        import_laboratorios(db, wb_optica["Registro Laboratorios"])
+        import_consultas(db, wb_optica["bdConsulta"], pac_map, admin.id)
         import_creditos(db, wb_optica["Cxc"], pac_map, venta_map)
+        import_cobros_caja(db, wb_cuentas["INGRESOS"], cuentas, admin.id)
 
         wb_optica.close()
         wb_cuentas.close()
 
+        from app.models.proveedor import Proveedor
         # Resumen final
         print("\n" + "=" * 60)
-        n_pac = db.execute(select(func.count()).select_from(Paciente)).scalar()
+        n_pac  = db.execute(select(func.count()).select_from(Paciente)).scalar()
         n_prod = db.execute(select(func.count()).select_from(Producto)).scalar()
-        n_ven = db.execute(select(func.count()).select_from(Venta)).scalar()
-        n_cob = db.execute(select(func.count()).select_from(Cobro)).scalar()
-        n_egr = db.execute(select(func.count()).select_from(Egreso)).scalar()
-        n_cxp = db.execute(select(func.count()).select_from(CuentaPorPagar)).scalar()
-        n_con = db.execute(select(func.count()).select_from(Consulta)).scalar()
+        n_lab  = db.execute(select(func.count()).select_from(Proveedor)).scalar()
+        n_ven  = db.execute(select(func.count()).select_from(Venta)).scalar()
+        n_cob  = db.execute(select(func.count()).select_from(Cobro)).scalar()
+        n_egr  = db.execute(select(func.count()).select_from(Egreso)).scalar()
+        n_cxp  = db.execute(select(func.count()).select_from(CuentaPorPagar)).scalar()
+        n_con  = db.execute(select(func.count()).select_from(Consulta)).scalar()
         n_cred = db.execute(select(func.count()).select_from(Credito)).scalar()
         print(f"  Pacientes:        {n_pac}")
         print(f"  Productos:        {n_prod}")
+        print(f"  Laboratorios:     {n_lab}")
         print(f"  Ventas:           {n_ven}")
-        print(f"  Cobros:           {n_cob}")
+        print(f"  Cobros (ventas):  {n_cob}")
         print(f"  Egresos:          {n_egr}")
         print(f"  Cuentas x Pagar:  {n_cxp}")
         print(f"  Consultas:        {n_con}")
         print(f"  Créditos (CxC):   {n_cred}")
+        print(f"  Total cobros:     {n_cob}  (ventas + caja)")
         print("=" * 60)
         print("  [OK] Importación completada.")
         print("=" * 60)
