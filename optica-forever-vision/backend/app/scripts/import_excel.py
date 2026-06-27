@@ -25,6 +25,7 @@ from app.models.tesoreria import CuentaBancaria, Cobro, CuentaPorPagar, Egreso
 from app.models.user import User
 from app.models.venta import Venta, VentaItem
 
+from app.models.agenda import OrdenTrabajo  # noqa: F401 — necesario para que SQLAlchemy resuelva FK de CuentaPorPagar.orden_id
 from app.models.consulta import Consulta
 from app.models.credito import Credito, CuotaCredito
 OPTICA_PATH = "/app/data/OpticaRevisado.xlsm"
