@@ -17,6 +17,7 @@ CLAVES_PERMITIDAS = {
     "telefono_optica",
     "telefono_optica_2",
     "firma_electronica",
+    "logo",
     "pais_codigo",
     "email_admin",
     "admin_phone",

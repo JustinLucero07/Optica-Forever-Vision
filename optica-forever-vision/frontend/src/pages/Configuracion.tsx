@@ -15,6 +15,7 @@ interface ConfigDict {
   direccion_optica?: string
   telefono_optica?: string
   firma_electronica?: string
+  logo?: string
   email_admin?: string
   admin_phone?: string
   wa_mode?: WaMode
@@ -59,6 +60,8 @@ export default function Configuracion() {
       setWaToken(config.wa_token ?? "")
       setWaPhoneId(config.wa_phone_id ?? "")
       setWaBizId(config.wa_business_id ?? "")
+      // Sincronizar logo desde backend (fuente de verdad compartida entre dispositivos)
+      setLogo(config.logo ?? null)
     }
   }, [config])
 
@@ -141,7 +144,13 @@ export default function Configuracion() {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (ev) => setLogo(ev.target?.result as string)
+    reader.onload = (ev) => {
+      const base64 = ev.target?.result as string
+      setLogo(base64)
+      api.put("/configuracion/logo", { valor: base64 })
+        .then(() => qc.invalidateQueries({ queryKey: ["configuracion"] }))
+        .catch(() => {})
+    }
     reader.readAsDataURL(file)
     e.target.value = ""
   }
@@ -479,7 +488,12 @@ export default function Configuracion() {
                   {logo ? "Cambiar logo" : "Subir logo"}
                 </Button>
                 {logo && (
-                  <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setLogo(null)}>
+                  <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => {
+                    setLogo(null)
+                    api.put("/configuracion/logo", { valor: "" })
+                      .then(() => qc.invalidateQueries({ queryKey: ["configuracion"] }))
+                      .catch(() => {})
+                  }}>
                     <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Eliminar
                   </Button>
                 )}

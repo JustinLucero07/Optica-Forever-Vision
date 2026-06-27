@@ -195,7 +195,19 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const logo = useBrandStore((s) => s.logo)
+  const setLogo = useBrandStore((s) => s.setLogo)
   const primaryHex = useBrandStore((s) => s.primaryHex)
+
+  // Cargar logo desde backend al iniciar (aplica a todos los dispositivos en la red)
+  const { data: remoteConfig } = useQuery<Record<string, string>>({
+    queryKey: ["configuracion"],
+    queryFn: () => api.get("/configuracion").then((r) => r.data),
+    staleTime: 60_000,
+    retry: false,
+  })
+  useEffect(() => {
+    if (remoteConfig) setLogo(remoteConfig.logo || null)
+  }, [remoteConfig, setLogo])
 
   // ── Nav badges ────────────────────────────────────────────────────────────
   const today = new Date().toISOString().slice(0, 10)
