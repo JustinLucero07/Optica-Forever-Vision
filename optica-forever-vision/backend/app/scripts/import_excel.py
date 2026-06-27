@@ -753,6 +753,7 @@ def import_creditos(
     ws,
     pac_map: dict[str, int],
     venta_map: dict[str, int],
+    admin_id: int,
 ) -> None:
     print("\n[10] Créditos (Cxc)...")
 
@@ -801,9 +802,11 @@ def import_creditos(
             abono_inicial=abono,
             monto_pagado=abono,
             numero_cuotas=1,
+            periodicidad="mensual",
             fecha_inicio=fecha,
             estado=estado,
             notas=concepto or None,
+            usuario_id=admin_id,
         )
         db.add(cred)
         db.flush()
@@ -940,7 +943,7 @@ def run() -> None:
         import_cxp(db, wb_cuentas["FACTURAS"])
         import_laboratorios(db, wb_optica["Registro Laboratorios"])
         import_consultas(db, wb_optica["bdConsulta"], pac_map, admin.id)
-        import_creditos(db, wb_optica["Cxc"], pac_map, venta_map)
+        import_creditos(db, wb_optica["Cxc"], pac_map, venta_map, admin.id)
         import_cobros_caja(db, wb_cuentas["INGRESOS"], cuentas, admin.id)
 
         wb_optica.close()
