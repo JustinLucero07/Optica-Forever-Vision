@@ -732,7 +732,6 @@ def import_consultas(db: Session, ws, pac_map: dict[str, int], admin_id: int) ->
             observaciones=_str(row[138], 500) if len(row) > 138 else None,
         )
         db.add(c)
-        counter += 1
         created += 1
 
     db.commit()
