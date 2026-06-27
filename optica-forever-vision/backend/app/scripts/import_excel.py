@@ -676,11 +676,6 @@ def _rx_eje(row: tuple, idx: int) -> "int | None":
 
 def import_consultas(db: Session, ws, pac_map: dict[str, int], admin_id: int) -> None:
     print("\n[9] Consultas (bdConsulta)...")
-
-    existing_max = db.execute(
-        text("SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)), 0) FROM consultas WHERE numero LIKE 'CON-%'")
-    ).scalar()
-    counter = (existing_max or 0) + 1
     created = skipped = 0
 
     for row in _all_rows(ws):
@@ -690,14 +685,14 @@ def import_consultas(db: Session, ws, pac_map: dict[str, int], admin_id: int) ->
         if not (key.startswith("C") and key[1:].isdigit()):
             continue
 
-        numero = f"CON-{str(counter).zfill(4)}"
+        # Número derivado directo de la clave Excel → idempotente
+        numero = f"CON-{key[1:].zfill(4)}"
 
         existing = db.execute(
             select(Consulta).where(Consulta.numero == numero).limit(1)
         ).scalars().first()
         if existing:
             skipped += 1
-            counter += 1
             continue
 
         pac_key = _str(row[3])                    # columna D
@@ -756,28 +751,23 @@ def import_creditos(
     admin_id: int,
 ) -> None:
     print("\n[10] Créditos (Cxc)...")
-
-    existing_max = db.execute(
-        text("SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)), 0) FROM creditos WHERE numero LIKE 'CXC-%'")
-    ).scalar()
-    counter = (existing_max or 0) + 1
     created = skipped = 0
 
     for row in _all_rows(ws):
         if len(row) < 4:
             continue
-        key = _str(row[3])                         # columna D
-        if not key.startswith("Cxc"):
+        key = _str(row[3])                         # columna D: Cxc0, Cxc1, ...
+        if not key.startswith("Cxc") or not key[3:].isdigit():
             continue
 
-        numero = f"CXC-{str(counter).zfill(4)}"
+        # Número derivado directo de la clave Excel → idempotente
+        numero = f"CXC-{str(int(key[3:]) + 1).zfill(4)}"
 
         existing = db.execute(
-            select(Credito).where(Credito.numero == numero)
-        ).scalar_one_or_none()
+            select(Credito).where(Credito.numero == numero).limit(1)
+        ).scalars().first()
         if existing:
             skipped += 1
-            counter += 1
             continue
 
         fecha      = _date(row[4]) or date.today()      # columna E
