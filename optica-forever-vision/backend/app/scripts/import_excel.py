@@ -854,6 +854,11 @@ def import_cobros_caja(db: Session, ws, cuentas: dict[str, int], admin_id: int) 
         cuentas.get("Efectivo")
         or next(iter(cuentas.values()))
     )
+
+    existing_max = db.execute(
+        text("SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)), 0) FROM cobros WHERE numero LIKE 'COB-%'")
+    ).scalar()
+    counter = (existing_max or 0) + 1
     created = skipped = 0
 
     for row in _all_rows(ws):
@@ -892,6 +897,7 @@ def import_cobros_caja(db: Session, ws, cuentas: dict[str, int], admin_id: int) 
             continue
 
         db.add(Cobro(
+            numero=f"COB-{str(counter).zfill(4)}",
             venta_id=None,
             cuenta_bancaria_id=cuenta_id,
             fecha=fecha,
@@ -900,6 +906,7 @@ def import_cobros_caja(db: Session, ws, cuentas: dict[str, int], admin_id: int) 
             concepto=concepto[:200],
             usuario_id=admin_id,
         ))
+        counter += 1
         created += 1
 
     db.commit()
