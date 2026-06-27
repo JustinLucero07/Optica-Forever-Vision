@@ -812,7 +812,6 @@ def import_creditos(
             )
             db.add(cuota)
 
-        counter += 1
         created += 1
 
     db.commit()
