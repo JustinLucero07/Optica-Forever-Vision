@@ -28,3 +28,8 @@ vite.config.js
 
 # Postgres data
 pgdata/
+
+# Archivos Excel de migración (no subir al repositorio)
+deploy/data/*.xlsx
+deploy/data/*.xlsm
+deploy/.env

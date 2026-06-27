@@ -151,19 +151,19 @@ Si sale `INFO Running upgrade ... -> head` es correcto.
 
 ```cmd
 docker compose -f docker-compose.prod.yml exec backend python -c "
-from app.db.session import SessionLocal
+from app.core.db import SessionLocal
 from app.models.user import User
-from app.core.security import get_password_hash
+from app.core.security import hash_password
 db = SessionLocal()
-u = User(username='admin', full_name='Administrador', role='admin', hashed_password=get_password_hash('Optica2024!'))
+u = User(email='admin@optica.com', full_name='Administrador', role='admin', password_hash=hash_password('Optica2026!'))
 db.add(u)
 db.commit()
-print('Usuario creado: admin / Optica2024!')
+print('Listo — email: admin@optica.com  /  pass: Optica2026!')
 db.close()
 "
 ```
 
-> **Cambia la contraseña** `Optica2024!` por una segura antes de ejecutar.
+> Podés cambiar `admin@optica.com` y `Optica2026!` por el email y contraseña que quieras usar para ingresar al sistema.
 
 ---
 

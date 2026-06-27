@@ -1,0 +1,5 @@
+# Carpeta para archivos Excel de migración.
+# Copiar aquí antes de ejecutar el importador:
+#   - OpticaRevisado.xlsm
+#   - Cuentas.xlsx
+# Estos archivos NO se suben a Git (ver .gitignore).

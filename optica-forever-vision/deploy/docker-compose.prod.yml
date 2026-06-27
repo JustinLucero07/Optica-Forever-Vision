@@ -40,6 +40,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Archivos Excel para la migración — copiarlos a deploy/data/ antes de correr el script
+      - ./data/OpticaRevisado.xlsm:/app/data/OpticaRevisado.xlsm:ro
+      - ./data/Cuentas.xlsx:/app/data/Cuentas.xlsx:ro
 
   frontend:
     build:
