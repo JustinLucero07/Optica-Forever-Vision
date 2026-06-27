@@ -624,11 +624,11 @@ def import_laboratorios(db: Session, ws) -> None:
     created = skipped = 0
 
     for row in _all_rows(ws):
-        if len(row) < 3:
+        if len(row) < 4:
             continue
-        key    = _str(row[0])          # columna A
-        nombre = _str(row[1], 150)     # columna B
-        tel    = _str(row[2], 20) if len(row) > 2 else None  # columna C
+        key    = _str(row[2])          # columna C: Lab0, Lab1, ...
+        nombre = _str(row[3], 150)     # columna D: nombre laboratorio
+        tel    = _str(row[5], 20) if len(row) > 5 else None  # columna F: telefono
 
         if not nombre or not key.startswith("Lab"):
             continue
@@ -735,8 +735,6 @@ def import_consultas(db: Session, ws, pac_map: dict[str, int], admin_id: int) ->
             diagnostico=_str(row[136], 500) if len(row) > 136 else None,
             plan_tratamiento=plan,
             observaciones=_str(row[138], 500) if len(row) > 138 else None,
-            tipo_lente=_str(row[135], 100) if len(row) > 135 else None,
-            tipo_armadura=_str(row[133], 100) if len(row) > 133 else None,
         )
         db.add(c)
         counter += 1
