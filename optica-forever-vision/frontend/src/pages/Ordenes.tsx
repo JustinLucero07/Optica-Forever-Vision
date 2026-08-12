@@ -1132,18 +1132,16 @@ export default function Ordenes() {
                           ✓ Ver venta
                         </Button>
                       )}
-                      {!o.venta_id && (
-                        <Button
-                          variant="ghost" size="sm" className="text-destructive hover:text-destructive"
-                          title="Eliminar orden"
-                          onClick={() => deleteWithUndo(
-                            `Orden ${o.numero} eliminada`,
-                            () => deleteMut.mutate(o.id),
-                          )}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <Button
+                        variant="ghost" size="sm" className="text-destructive hover:text-destructive"
+                        title="Eliminar orden"
+                        onClick={() => deleteWithUndo(
+                          `Orden ${o.numero} eliminada`,
+                          () => deleteMut.mutate(o.id),
+                        )}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </td>
                 </tr>

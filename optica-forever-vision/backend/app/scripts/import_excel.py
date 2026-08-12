@@ -838,7 +838,7 @@ def _detect_metodo(row: tuple, start: int = 7) -> str:
 def import_cobros_caja(db: Session, ws, cuentas: dict[str, int], admin_id: int) -> None:
     print("\n[11] Cobros de caja (Cuentas.xlsx → INGRESOS)...")
 
-    cuenta_id = (
+    fallback_cuenta_id = (
         cuentas.get("Efectivo")
         or next(iter(cuentas.values()))
     )
@@ -869,7 +869,11 @@ def import_cobros_caja(db: Session, ws, cuentas: dict[str, int], admin_id: int) 
         prod     = _str(row[3], 100) if len(row) > 3 else None
         cliente  = " ".join(filter(None, [nombre, apell])) or "Cliente"
         concepto = f"{cliente} — {prod or 'Ingreso'}"
-        metodo   = _detect_metodo(row, 7)
+
+        # Columna J (índice 9) = TIPO DE PAGO → determina cuenta y metodo
+        tipo_pago = _str(row[9], 50) if len(row) > 9 else ""
+        metodo, cuenta_nombre = _metodo_cuenta(tipo_pago)
+        cuenta_id = cuentas.get(cuenta_nombre) or fallback_cuenta_id
 
         # Idempotencia: comparar fecha + monto + concepto
         ya = db.execute(
