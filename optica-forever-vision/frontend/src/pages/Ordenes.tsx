@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogBody } from "@/components/ui/dialog"
 import { getMarcaFooter, PDF_BASE_CSS, openPrintWindow, getMarcaLogo, downloadHtmlAsPdf } from "@/lib/pdf"
 import { parsePrescripcion } from "@/lib/rx"
+import { errMsg } from "@/lib/errors"
 import { useBrandStore } from "@/store/brand"
 
 function toISO(d: Date) { return d.toISOString().slice(0, 10) }
@@ -856,8 +857,8 @@ export default function Ordenes() {
       }
       qc.invalidateQueries({ queryKey: ["ordenes"] })
       setOpenForm(false)
-    } catch {
-      toast.error("Error al guardar")
+    } catch (e) {
+      toast.error(errMsg(e, "Error al guardar"))
     } finally {
       setSaving(false)
     }
