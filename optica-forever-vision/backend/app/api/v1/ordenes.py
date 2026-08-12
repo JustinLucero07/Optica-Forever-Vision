@@ -113,8 +113,6 @@ def eliminar_orden(
     orden = db.get(OrdenTrabajo, orden_id)
     if not orden:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
-    if orden.venta_id:
-        raise HTTPException(status_code=409, detail="No se puede eliminar una orden ya facturada")
 
     # Reponer stock si fue tomado de inventario propio
     if orden.lab_proveedor == "Stock propio" and orden.producto_id:

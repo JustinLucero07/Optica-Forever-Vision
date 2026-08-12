@@ -967,6 +967,22 @@ def run() -> None:
         print(f"  Créditos (CxC):   {n_cred}")
         print(f"  Total cobros:     {n_cob}  (ventas + caja)")
         print("=" * 60)
+
+        # Recalcular saldo_actual de cada cuenta bancaria
+        db.execute(text("""
+            UPDATE cuentas_bancarias cb
+            SET saldo_actual = (
+                SELECT COALESCE(SUM(c.monto), 0) FROM cobros c WHERE c.cuenta_bancaria_id = cb.id
+            ) - (
+                SELECT COALESCE(SUM(e.monto), 0) FROM egresos e WHERE e.cuenta_bancaria_id = cb.id
+            )
+        """))
+        db.commit()
+        cuentas_saldos = db.execute(select(CuentaBancaria)).scalars().all()
+        print("  Saldos recalculados:")
+        for cb in cuentas_saldos:
+            print(f"    {cb.nombre}: ${float(cb.saldo_actual):.2f}")
+
         print("  [OK] Importación completada.")
         print("=" * 60)
 
