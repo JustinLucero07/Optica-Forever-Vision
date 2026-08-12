@@ -4,10 +4,11 @@ import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Plus, Loader2, CreditCard, ChevronDown, ChevronUp, Printer, UserCheck } from "lucide-react"
+import { Plus, Loader2, CreditCard, ChevronDown, ChevronUp, Printer, UserCheck, Trash2 } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
+import { deleteWithUndo } from "@/lib/confirm"
 import { getMarcaFooter, PDF_BASE_CSS, openPrintWindow, getMarcaLogo } from "@/lib/pdf"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -258,6 +259,12 @@ export default function Creditos() {
     onError: (e) => toast.error(errMsg(e, "Error")),
   })
 
+  const eliminarCreditoMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/creditos/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["creditos"] }); toast.success("Crédito eliminado") },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
+  })
+
   function abrirNuevo() {
     resetN({ fecha_inicio: hoy, periodicidad: "mensual", numero_cuotas: "3", abono_inicial: "0" })
     setVentaSel(null); setBusqVenta("")
@@ -373,6 +380,13 @@ export default function Creditos() {
                     <td className="px-4 py-3"><Badge variant={estadoColor(c.estado) as any}>{c.estado}</Badge></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
+                        <button
+                          title="Eliminar crédito"
+                          onClick={() => deleteWithUndo(`Crédito ${c.numero} eliminado`, () => eliminarCreditoMut.mutate(c.id))}
+                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                         <Button
                           variant="ghost" size="sm"
                           title="Formato de aceptación de crédito"

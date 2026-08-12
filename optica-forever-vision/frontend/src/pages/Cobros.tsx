@@ -202,6 +202,18 @@ export default function Cobros() {
     onError: (e) => toast.error(errMsg(e, "No se puede eliminar")),
   })
 
+  const eliminarCobroMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/cobros/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cobros"] }); qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] }); toast.success("Cobro eliminado") },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
+  })
+
+  const eliminarEgresoMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/egresos/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["egresos"] }); qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] }); toast.success("Egreso eliminado") },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
+  })
+
   const transferenciaMut = useMutation({
     mutationFn: (d: TransferenciaForm) => api.post("/transferencias", {
       fecha: d.fecha, cuenta_origen_id: Number(d.cuenta_origen_id),
@@ -369,6 +381,7 @@ export default function Cobros() {
                 <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Concepto</th>
                 <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Método</th>
                 <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Monto</th>
+                <th className="w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
@@ -381,6 +394,11 @@ export default function Cobros() {
                   <td className="px-4 py-3">{c.concepto}{c.venta_id && <span className="ml-2 text-xs text-muted-foreground">VEN #{c.venta_id}</span>}</td>
                   <td className="px-4 py-3 text-muted-foreground capitalize">{c.metodo_pago.replace("_", " ")}</td>
                   <td className="px-4 py-3 text-right font-semibold text-green-700">{fmt(c.monto)}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => deleteWithUndo(`Cobro ${c.numero} eliminado`, () => eliminarCobroMut.mutate(c.id))} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -402,6 +420,7 @@ export default function Cobros() {
                 <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Categoría</th>
                 <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Concepto</th>
                 <th className="text-right px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Monto</th>
+                <th className="w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
@@ -414,6 +433,11 @@ export default function Cobros() {
                   <td className="px-4 py-3"><Badge variant="secondary">{e.categoria}</Badge></td>
                   <td className="px-4 py-3">{e.concepto}</td>
                   <td className="px-4 py-3 text-right font-semibold text-amber-700">{fmt(e.monto)}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => deleteWithUndo(`Egreso ${e.numero} eliminado`, () => eliminarEgresoMut.mutate(e.id))} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

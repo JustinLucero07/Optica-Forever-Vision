@@ -127,6 +127,24 @@ def crear_cobro(
     return cobro
 
 
+@router.delete("/cobros/{cid}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_cobro(
+    cid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    cobro = db.get(Cobro, cid)
+    if not cobro:
+        raise HTTPException(status_code=404, detail="Cobro no encontrado")
+    cuenta = db.execute(
+        select(CuentaBancaria).where(CuentaBancaria.id == cobro.cuenta_bancaria_id).with_for_update()
+    ).scalar_one_or_none()
+    if cuenta:
+        cuenta.saldo_actual = float(cuenta.saldo_actual) - float(cobro.monto)
+    db.delete(cobro)
+    db.commit()
+
+
 # ── Egresos ────────────────────────────────────────────────────────────────────
 
 @router.get("/egresos", response_model=list[EgresoOut])
@@ -178,6 +196,24 @@ def crear_egreso(
     db.commit()
     db.refresh(egreso)
     return egreso
+
+
+@router.delete("/egresos/{eid}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_egreso(
+    eid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    egreso = db.get(Egreso, eid)
+    if not egreso:
+        raise HTTPException(status_code=404, detail="Egreso no encontrado")
+    cuenta = db.execute(
+        select(CuentaBancaria).where(CuentaBancaria.id == egreso.cuenta_bancaria_id).with_for_update()
+    ).scalar_one_or_none()
+    if cuenta:
+        cuenta.saldo_actual = float(cuenta.saldo_actual) + float(egreso.monto)
+    db.delete(egreso)
+    db.commit()
 
 
 # ── Cuentas por Pagar (Labs) ───────────────────────────────────────────────────

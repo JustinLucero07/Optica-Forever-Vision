@@ -104,6 +104,19 @@ def entrada_stock(
     return db.execute(select(Producto).options(_eager).where(Producto.id == pid)).scalar_one()
 
 
+@router.delete("/{pid}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_producto(
+    pid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    prod = db.get(Producto, pid)
+    if not prod:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    prod.activo = False
+    db.commit()
+
+
 @router.post("/{pid}/ajuste", response_model=ProductoOut)
 def ajuste_stock(
     pid: int,
@@ -125,3 +138,4 @@ def ajuste_stock(
     ))
     db.commit()
     return db.execute(select(Producto).options(_eager).where(Producto.id == pid)).scalar_one()
+

@@ -99,6 +99,12 @@ export default function Inventario() {
     onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
   })
 
+  const eliminarProductoMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/productos/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["productos"] }); toast.success("Producto desactivado") },
+    onError: (e) => { const err = e as any; toast.error(err?.response?.data?.detail ?? "Error al eliminar") },
+  })
+
   function guardarCat() {
     const n = nombreCat.trim()
     if (!n) return
@@ -238,6 +244,15 @@ export default function Inventario() {
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </>
+                    )}
+                    {rol === "admin" && (
+                      <button
+                        title="Desactivar producto"
+                        onClick={() => deleteWithUndo(`Producto "${p.nombre}" desactivado`, () => eliminarProductoMut.mutate(p.id))}
+                        className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     )}
                   </div>
                 </td>

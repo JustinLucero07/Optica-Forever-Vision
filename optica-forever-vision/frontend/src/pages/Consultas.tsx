@@ -1,10 +1,13 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
-import { Search, Loader2, Stethoscope, Plus } from "lucide-react"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { Search, Loader2, Stethoscope, Plus, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
+import { deleteWithUndo } from "@/lib/confirm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -42,6 +45,7 @@ const PAGE = 50
 
 export default function Consultas() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const [busqueda, setBusqueda] = useState("")
   const [q, setQ] = useState("")
   const [skip, setSkip] = useState(0)
@@ -56,6 +60,12 @@ export default function Consultas() {
     queryKey: ["consultas-global", q, skip],
     queryFn: () =>
       api.get("/consultas", { params: { q: q || undefined, skip, limit: PAGE } }).then(r => r.data),
+  })
+
+  const eliminarConsultaMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/consultas/consultas/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["consultas-global"] }); toast.success("Consulta eliminada") },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
   })
 
   function buscar() {
@@ -194,6 +204,15 @@ export default function Consultas() {
                   </td>
                   <td className="px-4 py-3 max-w-[200px] truncate text-muted-foreground">
                     {c.diagnostico ?? "—"}
+                  </td>
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <button
+                      title="Eliminar consulta"
+                      onClick={() => deleteWithUndo(`Consulta ${c.numero} eliminada`, () => eliminarConsultaMut.mutate(c.id))}
+                      className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
