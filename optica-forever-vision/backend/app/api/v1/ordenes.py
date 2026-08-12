@@ -67,9 +67,7 @@ def crear_orden(
 
     if producto_id and body.lab_proveedor == "Stock propio":
         prod = db.get(Producto, producto_id)
-        if prod:
-            if prod.stock_actual <= 0:
-                raise HTTPException(status_code=422, detail=f"Sin stock disponible para '{prod.nombre}'")
+        if prod and prod.stock_actual > 0:
             prod.stock_actual = prod.stock_actual - 1
 
     db.commit()
