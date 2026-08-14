@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.deps import get_current_user, require_roles
@@ -9,6 +9,7 @@ from app.core.db import get_db
 from app.core.numeradores import siguiente_numero
 from app.models.paciente import Paciente
 from app.models.producto import MovimientoInventario, Producto
+from app.models.tesoreria import Cobro
 from app.models.user import User
 from app.models.venta import Venta, VentaItem
 from app.schemas.ventas import VentaCreate, VentaListItem, VentaOut
@@ -43,11 +44,22 @@ def listar(
     if estado:
         stmt = stmt.where(Venta.estado == estado)
     rows = db.execute(stmt.offset(skip).limit(limit)).all()
+
+    venta_ids = [v.id for v, _ in rows]
+    abonos: dict[int, float] = {}
+    if venta_ids:
+        abono_rows = db.execute(
+            select(Cobro.venta_id, func.sum(Cobro.monto))
+            .where(Cobro.venta_id.in_(venta_ids))
+            .group_by(Cobro.venta_id)
+        ).all()
+        abonos = {vid: float(total) for vid, total in abono_rows}
+
     return [
         VentaListItem(
             id=v.id, numero=v.numero, paciente_id=v.paciente_id,
             paciente_nombre=f"{p.apellidos} {p.nombres}" if p else None,
-            fecha=v.fecha, total=v.total, estado=v.estado, created_at=v.created_at,
+            fecha=v.fecha, total=v.total, abonado=abonos.get(v.id, 0), estado=v.estado, created_at=v.created_at,
         )
         for v, p in rows
     ]

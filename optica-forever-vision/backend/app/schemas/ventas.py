@@ -65,6 +65,7 @@ class VentaListItem(BaseModel):
     paciente_nombre: str | None = None
     fecha: date
     total: float
+    abonado: float = 0
     estado: str
     created_at: datetime
     model_config = {"from_attributes": True}
