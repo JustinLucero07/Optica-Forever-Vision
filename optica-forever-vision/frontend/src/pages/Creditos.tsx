@@ -169,6 +169,7 @@ ${getMarcaFooter(logo)}
 
 export default function Creditos() {
   const [filtroEstado, setFiltroEstado] = useState("")
+  const [busqPaciente, setBusqPaciente] = useState("")
   const [soloCuotasVencidas, setSoloCuotasVencidas] = useState(false)
   const [page, setPage] = useState(1)
   const [PER_PAGE, setPER_PAGE] = useState(20)
@@ -285,9 +286,9 @@ export default function Creditos() {
 
   const cuotasDetalle = creditoDetalle?.cuotas ?? []
 
-  const creditosFiltrados = soloCuotasVencidas
-    ? creditos.filter(c => c.estado === "vencido")
-    : creditos
+  const creditosFiltrados = creditos
+    .filter(c => !soloCuotasVencidas || c.estado === "vencido")
+    .filter(c => !busqPaciente || (c.paciente_nombre ?? "").toLowerCase().includes(busqPaciente.toLowerCase()))
 
   const estadosSummary = creditos.reduce((acc: Record<string, number>, c) => {
     acc[c.estado] = (acc[c.estado] ?? 0) + 1
@@ -322,6 +323,15 @@ export default function Creditos() {
 
       {/* Filtro */}
       <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <Input
+            className="pl-9 h-8 w-48 text-sm"
+            placeholder="Buscar paciente..."
+            value={busqPaciente}
+            onChange={e => { setBusqPaciente(e.target.value); setPage(1) }}
+          />
+        </div>
         {["", "vigente", "vencido", "pagado"].map(e => (
           <button key={e} onClick={() => { setPage(1); setFiltroEstado(e) }}
             className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${filtroEstado === e ? "bg-primary text-primary-foreground border-primary" : "border-input hover:bg-muted"}`}>
