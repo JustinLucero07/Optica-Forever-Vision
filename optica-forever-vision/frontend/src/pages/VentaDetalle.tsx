@@ -283,7 +283,17 @@ export default function VentaDetalle() {
                   <Label className="text-xs">Método</Label>
                   <select
                     value={cobroMetodo}
-                    onChange={e => setCobroMetodo(e.target.value)}
+                    onChange={e => {
+                      const m = e.target.value
+                      setCobroMetodo(m)
+                      if (m === "tarjeta") {
+                        const datafono = cuentas.find(c => /dataf|maquina|tarjeta/i.test(c.nombre))
+                        if (datafono) setCobroCuenta(String(datafono.id))
+                      } else if (m === "efectivo") {
+                        const ef = cuentas.find(c => /efectivo/i.test(c.nombre))
+                        if (ef) setCobroCuenta(String(ef.id))
+                      }
+                    }}
                     className="h-8 w-full rounded-md border text-sm px-2 bg-background"
                   >
                     <option value="efectivo">Efectivo</option>

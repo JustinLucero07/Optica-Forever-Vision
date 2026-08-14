@@ -633,14 +633,15 @@ def import_laboratorios(db: Session, ws) -> None:
         if not nombre or not key.startswith("Lab"):
             continue
 
+        nombre_norm = nombre.title()
         ya = db.execute(
-            select(Proveedor).where(Proveedor.nombre == nombre).limit(1)
+            select(Proveedor).where(Proveedor.nombre.ilike(nombre)).limit(1)
         ).scalars().first()
         if ya:
             skipped += 1
             continue
 
-        db.add(Proveedor(nombre=nombre.title(), tipo="laboratorio", telefono=tel, activo=True))
+        db.add(Proveedor(nombre=nombre_norm, tipo="laboratorio", telefono=tel, activo=True))
         created += 1
 
     db.commit()
@@ -901,6 +902,10 @@ def import_cobros_caja(db: Session, ws, cuentas: dict[str, int], admin_id: int) 
         counter += 1
         created += 1
 
+    db.execute(
+        text("UPDATE configuraciones SET valor = :v WHERE clave = 'numerador_cobro'"),
+        {"v": str(counter - 1)},
+    )
     db.commit()
     print(f"  → {created} creados, {skipped} omitidos")
 
@@ -986,6 +991,24 @@ def run() -> None:
         print("  Saldos recalculados:")
         for cb in cuentas_saldos:
             print(f"    {cb.nombre}: ${float(cb.saldo_actual):.2f}")
+
+        # Sincronizar TODOS los numeradores con el max real de la BD
+        sync_queries = [
+            ("numerador_paciente",    "SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)),0) FROM pacientes WHERE numero LIKE 'PAC-%'"),
+            ("numerador_venta",       "SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)),0) FROM ventas WHERE numero LIKE 'VEN-%'"),
+            ("numerador_cobro",       "SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)),0) FROM cobros WHERE numero LIKE 'COB-%'"),
+            ("numerador_egreso",      "SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)),0) FROM egresos WHERE numero LIKE 'EGR-%'"),
+            ("numerador_consulta",    "SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)),0) FROM consultas WHERE numero LIKE 'CON-%'"),
+            ("numerador_credito",     "SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)),0) FROM creditos WHERE numero LIKE 'CRD-%'"),
+            ("numerador_orden",       "SELECT COALESCE(MAX(CAST(SUBSTRING(numero,5) AS INTEGER)),0) FROM ordenes_trabajo WHERE numero LIKE 'ORD-%'"),
+            ("numerador_cxp",         "SELECT COALESCE(MAX(id),0) FROM cuentas_por_pagar"),
+        ]
+        print("  Numeradores sincronizados:")
+        for clave, query in sync_queries:
+            max_val = db.execute(text(query)).scalar() or 0
+            db.execute(text("UPDATE configuraciones SET valor = :v WHERE clave = :c"), {"v": str(max_val), "c": clave})
+            print(f"    {clave}: {max_val}")
+        db.commit()
 
         print("  [OK] Importación completada.")
         print("=" * 60)

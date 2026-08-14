@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm, type UseFormRegisterReturn } from "react-hook-form"
 import { toast } from "sonner"
-import { type LucideIcon, Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2, ArrowLeftRight, AlertTriangle, BarChart2, Building2, Pencil } from "lucide-react"
+import { type LucideIcon, Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2, ArrowLeftRight, AlertTriangle, BarChart2, Building2, Pencil, Search } from "lucide-react"
 import { deleteWithUndo } from "@/lib/confirm"
 
 import { api } from "@/lib/api"
@@ -54,6 +54,7 @@ export default function Cobros() {
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true })
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
+  const [busqConcepto, setBusqConcepto] = useState("")
   const [pageCobros, setPageCobros] = useState(1)
   const [pageEgresos, setPageEgresos] = useState(1)
   const [pageCxP, setPageCxP] = useState(1)
@@ -134,7 +135,7 @@ export default function Cobros() {
     enabled: tab === "cuentas",
   })
 
-  const { register: rC, handleSubmit: hsC, reset: resetC, setValue: svC } = useForm<CobroForm>()
+  const { register: rC, handleSubmit: hsC, reset: resetC, setValue: svC, watch: watchC } = useForm<CobroForm>()
   const { register: rE, handleSubmit: hsE, reset: resetE, watch: watchE } = useForm<EgresoForm>()
   const { register: rCxP, handleSubmit: hsCxP, reset: resetCxP } = useForm<CxPForm>()
   const { register: rPago, handleSubmit: hsPago, reset: resetPago, watch: watchPago } = useForm<PagoForm>()
@@ -288,6 +289,19 @@ export default function Cobros() {
     setShowVentaList(false)
   }
 
+  // Auto-seleccionar cuenta según método de pago del cobro
+  const metodoC = watchC("metodo_pago")
+  useEffect(() => {
+    if (!cuentas.length) return
+    if (metodoC === "tarjeta_debito" || metodoC === "tarjeta_credito" || metodoC === "tarjeta") {
+      const datafono = cuentas.find(c => /dataf|maquina|tarjeta/i.test(c.nombre))
+      if (datafono) svC("cuenta_bancaria_id", String(datafono.id))
+    } else if (metodoC === "efectivo") {
+      const ef = cuentas.find(c => /efectivo/i.test(c.nombre))
+      if (ef) svC("cuenta_bancaria_id", String(ef.id))
+    }
+  }, [metodoC, cuentas.length])
+
   function limpiarVenta() {
     setVentaSel(null)
     setBusqVenta("")
@@ -348,7 +362,11 @@ export default function Cobros() {
 
       {/* Filtro fechas */}
       {(tab === "cobros" || tab === "egresos") && (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-9 h-9 w-48" placeholder="Buscar concepto..." value={busqConcepto} onChange={e => setBusqConcepto(e.target.value)} />
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Desde</span>
             <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 w-40" />
@@ -357,7 +375,7 @@ export default function Cobros() {
             <span className="text-sm text-muted-foreground">Hasta</span>
             <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-9 w-40" />
           </div>
-          {(desde || hasta) && <Button variant="ghost" size="sm" onClick={() => { setDesde(""); setHasta("") }}>Limpiar</Button>}
+          {(desde || hasta || busqConcepto) && <Button variant="ghost" size="sm" onClick={() => { setDesde(""); setHasta(""); setBusqConcepto("") }}>Limpiar</Button>}
           <div className="ml-auto">
             {tab === "cobros" && (rol === "admin" || rol === "cajero" || rol === "vendedor") && (
               <Button size="sm" onClick={abrirCobro}><Plus className="h-4 w-4 mr-1" /> Nuevo Cobro</Button>
@@ -387,7 +405,7 @@ export default function Cobros() {
             <tbody className="divide-y divide-border/50">
               {cargCobros && <tr><td colSpan={5} className="text-center py-8"><Loader2 className="h-5 w-5 animate-spin inline" /></td></tr>}
               {!cargCobros && cobros.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No hay cobros en el período</td></tr>}
-              {cobros.slice((pageCobros - 1) * perPage, pageCobros * perPage).map(c => (
+              {cobros.filter(c => !busqConcepto || c.concepto?.toLowerCase().includes(busqConcepto.toLowerCase())).slice((pageCobros - 1) * perPage, pageCobros * perPage).map(c => (
                 <tr key={c.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3"><Badge variant="outline">{c.numero}</Badge></td>
                   <td className="px-4 py-3 text-muted-foreground">{c.fecha}</td>

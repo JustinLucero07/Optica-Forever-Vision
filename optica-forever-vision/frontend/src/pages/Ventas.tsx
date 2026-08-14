@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Plus, XCircle, Loader2, Download, ArrowUpDown, ArrowUp, ArrowDown, Copy } from "lucide-react"
+import { Plus, XCircle, Loader2, Download, ArrowUpDown, ArrowUp, ArrowDown, Copy, Search } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
@@ -43,6 +43,7 @@ export default function Ventas() {
   const navigate = useNavigate()
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
+  const [busqPaciente, setBusqPaciente] = useState("")
   const [page, setPage]       = useState(1)
   const [perPage, setPerPage] = useState(20)
   const [anulando, setAnulando] = useState<Venta | null>(null)
@@ -97,7 +98,11 @@ export default function Ventas() {
     setPage(1)
   }
 
-  const sorted = [...ventas].sort((a, b) => {
+  const ventasFiltradas = busqPaciente
+    ? ventas.filter(v => (v.paciente_nombre ?? "").toLowerCase().includes(busqPaciente.toLowerCase()))
+    : ventas
+
+  const sorted = [...ventasFiltradas].sort((a, b) => {
     if (!sortCol) return 0
     let av: string | number = ""
     let bv: string | number = ""
@@ -141,6 +146,15 @@ export default function Ventas() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-9 h-9 w-52 rounded-xl"
+            placeholder="Buscar paciente..."
+            value={busqPaciente}
+            onChange={e => { setBusqPaciente(e.target.value); setPage(1) }}
+          />
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Desde</span>
           <Input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1) }} className="h-9 w-40 rounded-xl" />
@@ -149,8 +163,8 @@ export default function Ventas() {
           <span className="text-sm text-muted-foreground">Hasta</span>
           <Input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1) }} className="h-9 w-40 rounded-xl" />
         </div>
-        {(desde || hasta) && (
-          <Button variant="ghost" size="sm" onClick={() => { setDesde(""); setHasta(""); setPage(1) }}>Limpiar</Button>
+        {(desde || hasta || busqPaciente) && (
+          <Button variant="ghost" size="sm" onClick={() => { setDesde(""); setHasta(""); setBusqPaciente(""); setPage(1) }}>Limpiar</Button>
         )}
       </div>
 

@@ -405,7 +405,17 @@ export default function VentaNueva() {
                 </label>
                 {cobroInmediato && (
                   <div className="flex gap-2">
-                    <select value={cobroMetodo} onChange={e => setCobroMetodo(e.target.value)}
+                    <select value={cobroMetodo} onChange={e => {
+                        const m = e.target.value
+                        setCobroMetodo(m)
+                        if (m === "tarjeta") {
+                          const datafono = cuentasBancarias.find(c => /dataf|maquina|tarjeta/i.test(c.nombre))
+                          if (datafono) setCobroCuentaId(String(datafono.id))
+                        } else if (m === "efectivo") {
+                          const ef = cuentasBancarias.find(c => /efectivo/i.test(c.nombre))
+                          if (ef) setCobroCuentaId(String(ef.id))
+                        }
+                      }}
                       className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
                       <option value="efectivo">Efectivo</option>
                       <option value="transferencia">Transferencia</option>

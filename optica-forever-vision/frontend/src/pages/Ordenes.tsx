@@ -618,12 +618,12 @@ export default function Ordenes() {
     const c = consultasDePaciente.find(c => c.id === Number(id))
     if (!c) return
     const src = fuente ?? fuenteRx
-    const fmtN = (v: number | null | undefined) => v != null ? String(v) : ""
+    const fmtN = (v: number | null | undefined, decimals = 2) => v != null ? Number(v).toFixed(decimals) : ""
     if (src === "refraccion") {
       setRx(r => ({
         ...r,
-        od: { esf: fmtN(c.rx_od_esf), cil: fmtN(c.rx_od_cil), eje: fmtN(c.rx_od_eje), add: fmtN(c.rx_od_add), prisma: "", dnp: "" },
-        oi: { esf: fmtN(c.rx_oi_esf), cil: fmtN(c.rx_oi_cil), eje: fmtN(c.rx_oi_eje), add: fmtN(c.rx_oi_add), prisma: "", dnp: "" },
+        od: { esf: fmtN(c.rx_od_esf), cil: fmtN(c.rx_od_cil), eje: fmtN(c.rx_od_eje, 0), add: fmtN(c.rx_od_add), prisma: "", dnp: "" },
+        oi: { esf: fmtN(c.rx_oi_esf), cil: fmtN(c.rx_oi_cil), eje: fmtN(c.rx_oi_eje, 0), add: fmtN(c.rx_oi_add), prisma: "", dnp: "" },
         diagnostico: c.diagnostico ?? r.diagnostico,
       }))
       toast.success("Refracción cargada")
@@ -632,8 +632,8 @@ export default function Ordenes() {
       if (!lc) { toast.warning("Esta consulta no tiene receta de lentes convencionales"); return }
       setRx(r => ({
         ...r,
-        od: { esf: fmtN(lc.lc_od_esf), cil: fmtN(lc.lc_od_cil), eje: fmtN(lc.lc_od_eje), add: fmtN(lc.lc_od_add), prisma: "", dnp: fmtN(lc.lc_od_dnp) },
-        oi: { esf: fmtN(lc.lc_oi_esf), cil: fmtN(lc.lc_oi_cil), eje: fmtN(lc.lc_oi_eje), add: fmtN(lc.lc_oi_add), prisma: "", dnp: fmtN(lc.lc_oi_dnp) },
+        od: { esf: fmtN(lc.lc_od_esf), cil: fmtN(lc.lc_od_cil), eje: fmtN(lc.lc_od_eje, 0), add: fmtN(lc.lc_od_add), prisma: "", dnp: fmtN(lc.lc_od_dnp) },
+        oi: { esf: fmtN(lc.lc_oi_esf), cil: fmtN(lc.lc_oi_cil), eje: fmtN(lc.lc_oi_eje, 0), add: fmtN(lc.lc_oi_add), prisma: "", dnp: fmtN(lc.lc_oi_dnp) },
         diseno: lc.tipo_lente ?? r.diseno,
         diagnostico: c.diagnostico ?? r.diagnostico,
       }))
@@ -643,8 +643,8 @@ export default function Ordenes() {
       if (!cl) { toast.warning("Esta consulta no tiene receta de contactología"); return }
       setRx(r => ({
         ...r,
-        od: { esf: fmtN(cl.cl_od_esf), cil: fmtN(cl.cl_od_cil), eje: fmtN(cl.cl_od_eje), add: "", prisma: "", dnp: "" },
-        oi: { esf: fmtN(cl.cl_oi_esf), cil: fmtN(cl.cl_oi_cil), eje: fmtN(cl.cl_oi_eje), add: "", prisma: "", dnp: "" },
+        od: { esf: fmtN(cl.cl_od_esf), cil: fmtN(cl.cl_od_cil), eje: fmtN(cl.cl_od_eje, 0), add: "", prisma: "", dnp: "" },
+        oi: { esf: fmtN(cl.cl_oi_esf), cil: fmtN(cl.cl_oi_cil), eje: fmtN(cl.cl_oi_eje, 0), add: "", prisma: "", dnp: "" },
         diagnostico: c.diagnostico ?? r.diagnostico,
       }))
       toast.success("Receta de contactología cargada")
@@ -669,7 +669,7 @@ export default function Ordenes() {
     }
     const fc = (location.state as any)?.fromConsulta
     if (fc) {
-      const fmtN = (v: number | null | undefined) => v != null ? String(v) : ""
+      const fmtN = (v: number | null | undefined, decimals = 2) => v != null ? Number(v).toFixed(decimals) : ""
       setEditOrden(null)
       setForm(f => ({ ...f, paciente_id: fc.paciente_id ? String(fc.paciente_id) : "" }))
       setRx({
