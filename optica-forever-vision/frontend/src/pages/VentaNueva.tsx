@@ -148,6 +148,7 @@ export default function VentaNueva() {
   const [cobroInmediato, setCobroInmediato] = useState(false)
   const [cobroMetodo, setCobroMetodo] = useState("efectivo")
   const [cobroCuentaId, setCobroCuentaId] = useState("")
+  const [cobroMonto, setCobroMonto] = useState("")
 
   const { data: cuentasBancarias = [] } = useQuery<{ id: number; nombre: string }[]>({
     queryKey: ["cuentas-bancarias"],
@@ -207,16 +208,21 @@ export default function VentaNueva() {
       }
       localStorage.removeItem(DRAFT_KEY)
       if (cobroInmediato && cobroCuentaId) {
+        const montoAbono = Number(cobroMonto) || res.data.total
         try {
           await api.post("/cobros", {
             venta_id: res.data.id,
             cuenta_bancaria_id: Number(cobroCuentaId),
             fecha: new Date().toISOString().slice(0, 10),
             concepto: `Cobro venta ${res.data.numero}`,
-            monto: res.data.total,
+            monto: montoAbono,
             metodo_pago: cobroMetodo,
           })
-          toast.success(`Venta ${res.data.numero} registrada y cobro aplicado`)
+          if (montoAbono >= res.data.total) {
+            toast.success(`Venta ${res.data.numero} registrada y pagada por completo`)
+          } else {
+            toast.success(`Venta ${res.data.numero} registrada con abono de $${montoAbono.toFixed(2)} — saldo pendiente $${(res.data.total - montoAbono).toFixed(2)}`)
+          }
         } catch {
           toast.success(`Venta ${res.data.numero} registrada`)
           toast.error("No se pudo registrar el cobro automático — hazlo desde el detalle")
@@ -400,40 +406,68 @@ export default function VentaNueva() {
               {/* Cobro inmediato */}
               <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
                 <label className="flex items-center gap-2 cursor-pointer text-sm font-medium">
-                  <input type="checkbox" checked={cobroInmediato} onChange={e => setCobroInmediato(e.target.checked)} className="rounded" />
-                  Cobrar al instante
+                  <input type="checkbox" checked={cobroInmediato} onChange={e => {
+                      const checked = e.target.checked
+                      setCobroInmediato(checked)
+                      if (checked && !cobroMonto) setCobroMonto(total.toFixed(2))
+                    }} className="rounded" />
+                  Registrar cobro/abono ahora
                 </label>
                 {cobroInmediato && (
-                  <div className="flex gap-2">
-                    <select value={cobroMetodo} onChange={e => {
-                        const m = e.target.value
-                        setCobroMetodo(m)
-                        if (m === "tarjeta") {
-                          const datafono = cuentasBancarias.find(c => /dataf|maquina|tarjeta/i.test(c.nombre))
-                          if (datafono) setCobroCuentaId(String(datafono.id))
-                        } else if (m === "efectivo") {
-                          const ef = cuentasBancarias.find(c => /efectivo/i.test(c.nombre))
-                          if (ef) setCobroCuentaId(String(ef.id))
-                        }
-                      }}
-                      className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
-                      <option value="efectivo">Efectivo</option>
-                      <option value="transferencia">Transferencia</option>
-                      <option value="tarjeta">Tarjeta</option>
-                      <option value="cheque">Cheque</option>
-                    </select>
-                    <select value={cobroCuentaId} onChange={e => setCobroCuentaId(e.target.value)}
-                      className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
-                      <option value="">— cuenta —</option>
-                      {cuentasBancarias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
+                  <div className="space-y-2">
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-xs text-muted-foreground">Monto a cobrar</label>
+                        <Input
+                          type="number" min="0.01" step="0.01" max={total}
+                          value={cobroMonto}
+                          onChange={e => setCobroMonto(e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-1 pb-0.5">
+                        <Button type="button" variant="outline" size="sm" className="h-8 text-xs"
+                          onClick={() => setCobroMonto(total.toFixed(2))}>
+                          Total (${total.toFixed(2)})
+                        </Button>
+                      </div>
+                    </div>
+                    {Number(cobroMonto) > 0 && Number(cobroMonto) < total && (
+                      <p className="text-xs text-amber-600">
+                        Abono parcial — quedará un saldo pendiente de ${(total - Number(cobroMonto)).toFixed(2)}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <select value={cobroMetodo} onChange={e => {
+                          const m = e.target.value
+                          setCobroMetodo(m)
+                          if (m === "tarjeta") {
+                            const datafono = cuentasBancarias.find(c => /dataf|maquina|tarjeta/i.test(c.nombre))
+                            if (datafono) setCobroCuentaId(String(datafono.id))
+                          } else if (m === "efectivo") {
+                            const ef = cuentasBancarias.find(c => /efectivo/i.test(c.nombre))
+                            if (ef) setCobroCuentaId(String(ef.id))
+                          }
+                        }}
+                        className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
+                        <option value="efectivo">Efectivo</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="tarjeta">Tarjeta</option>
+                        <option value="cheque">Cheque</option>
+                      </select>
+                      <select value={cobroCuentaId} onChange={e => setCobroCuentaId(e.target.value)}
+                        className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
+                        <option value="">— cuenta —</option>
+                        {cuentasBancarias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </select>
+                    </div>
                   </div>
                 )}
               </div>
 
               <Button
                 size="lg"
-                disabled={cart.length === 0 || venderMut.isPending || (cobroInmediato && !cobroCuentaId)}
+                disabled={cart.length === 0 || venderMut.isPending || (cobroInmediato && (!cobroCuentaId || !(Number(cobroMonto) > 0)))}
                 onClick={() => {
                   const sinPrecio = cart.filter(it => it.precio_unitario <= 0)
                   if (sinPrecio.length > 0) {
