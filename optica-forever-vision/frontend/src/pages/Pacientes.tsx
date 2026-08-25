@@ -110,7 +110,10 @@ export default function Pacientes() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [expandidoRef, setExpandidoRef] = useState<string | null>(null)
   const [dialogOptom, setDialogOptom] = useState(false)
-  const [refDropdownOpen, setRefDropdownOpen] = useState(false)
+  const [dialogNuevoRef, setDialogNuevoRef] = useState(false)
+  const [nuevoRefNombre, setNuevoRefNombre] = useState("")
+  const [dialogNuevoOrigen, setDialogNuevoOrigen] = useState(false)
+  const [nuevoOrigenNombre, setNuevoOrigenNombre] = useState("")
   const qc = useQueryClient()
   const rol = useAuthStore((s) => s.user?.role)
 
@@ -152,7 +155,20 @@ export default function Pacientes() {
 
   const [editandoRef, setEditandoRef] = useState<ReferidoMaster | null>(null)
   const [nombreRefEdit, setNombreRefEdit] = useState("")
-  const [origenDropdownOpen, setOrigenDropdownOpen] = useState(false)
+
+  function referidosParaSelect(valorActual: string | undefined) {
+    if (valorActual && !referidosActivos.some(r => r.nombre === valorActual)) {
+      return [...referidosActivos, { id: -1, nombre: valorActual, activo: true }]
+    }
+    return referidosActivos
+  }
+
+  function origenesParaSelect(valorActual: string | undefined) {
+    if (valorActual && !origenesActivos.some(r => r.nombre === valorActual)) {
+      return [...origenesActivos, { id: -1, nombre: valorActual, activo: true }]
+    }
+    return origenesActivos
+  }
 
   const editarRefMut = useMutation({
     mutationFn: (r: ReferidoMaster) => api.put(`/referidos/${r.id}`, { nombre: r.nombre, activo: r.activo }),
@@ -190,6 +206,28 @@ export default function Pacientes() {
       toast.success(`Optometrista "${res.data.full_name}" creado`)
     },
     onError: (e) => toast.error(errMsg(e, "Error al crear optometrista")),
+  })
+
+  const crearRefMut = useMutation({
+    mutationFn: (nombre: string) => api.post("/referidos", { nombre, tipo: "referido" }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["referidos-list"] })
+      setValue("referido_por", res.data.nombre)
+      setDialogNuevoRef(false)
+      toast.success(`Referido "${res.data.nombre}" creado`)
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al crear referido")),
+  })
+
+  const crearOrigenMut = useMutation({
+    mutationFn: (nombre: string) => api.post("/referidos", { nombre, tipo: "origen" }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["origenes-list"] })
+      setValue("origen", res.data.nombre)
+      setDialogNuevoOrigen(false)
+      toast.success(`Opción "${res.data.nombre}" creada`)
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al crear opción")),
   })
 
   function upsertReferido(nombre: string | undefined, tipo: "referido" | "origen" = "referido") {
@@ -327,8 +365,12 @@ export default function Pacientes() {
           </p>
 
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-sm">Administrar lista de referidos</CardTitle>
+              <Button size="sm" variant="outline" className="h-7 text-xs"
+                onClick={() => { setNuevoRefNombre(""); setDialogNuevoRef(true) }}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Agregar
+              </Button>
             </CardHeader>
             <CardContent className="space-y-1">
               {referidosMaster.length === 0 && (
@@ -380,8 +422,12 @@ export default function Pacientes() {
           </Card>
 
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <CardTitle className="text-sm">Administrar "¿Cómo nos conoció?"</CardTitle>
+              <Button size="sm" variant="outline" className="h-7 text-xs"
+                onClick={() => { setNuevoOrigenNombre(""); setDialogNuevoOrigen(true) }}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Agregar
+              </Button>
             </CardHeader>
             <CardContent className="space-y-1">
               {origenesMaster.length === 0 && (
@@ -652,81 +698,41 @@ export default function Pacientes() {
               <Label>Dirección</Label>
               <Input {...register("direccion")} />
             </div>
-            <div className="space-y-1 relative">
+            <div className="space-y-1">
               <Label>¿Cómo nos conoció?</Label>
-              <Input
-                placeholder="Ej: Facebook, Recomendación..."
-                autoComplete="off"
-                {...register("origen")}
-                onFocus={() => setOrigenDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setOrigenDropdownOpen(false), 150)}
-              />
-              {origenDropdownOpen && (() => {
-                const texto = (watch("origen") ?? "").trim().toLowerCase()
-                const coincidencias = origenesActivos.filter(r => !texto || r.nombre.toLowerCase().includes(texto))
-                const hayExacto = origenesActivos.some(r => r.nombre.toLowerCase() === texto)
-                return (coincidencias.length > 0 || (texto && !hayExacto)) ? (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-border rounded-md shadow-xl max-h-48 overflow-y-auto bg-card">
-                    {coincidencias.map(r => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onMouseDown={() => { setValue("origen", r.nombre); setOrigenDropdownOpen(false) }}
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
-                      >
-                        {r.nombre}
-                      </button>
-                    ))}
-                    {texto && !hayExacto && (
-                      <button
-                        type="button"
-                        onMouseDown={() => setOrigenDropdownOpen(false)}
-                        className="w-full text-left px-3 py-1.5 text-sm text-primary hover:bg-accent transition-colors border-t"
-                      >
-                        + Crear "{watch("origen")}"
-                      </button>
-                    )}
-                  </div>
-                ) : null
-              })()}
+              <div className="flex gap-1.5">
+                <select
+                  {...register("origen")}
+                  className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">— seleccionar —</option>
+                  {origenesParaSelect(watch("origen")).map(o => (
+                    <option key={o.id} value={o.nombre}>{o.nombre}</option>
+                  ))}
+                </select>
+                <Button type="button" variant="outline" size="sm" className="px-2 shrink-0" title="Agregar opción nueva"
+                  onClick={() => { setNuevoOrigenNombre(""); setDialogNuevoOrigen(true) }}>
+                  <UserPlus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <div className="space-y-1 relative">
+            <div className="space-y-1">
               <Label>Referido por (nombre externo)</Label>
-              <Input
-                placeholder="Ej: Dr. García, María López..."
-                autoComplete="off"
-                {...register("referido_por")}
-                onFocus={() => setRefDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setRefDropdownOpen(false), 150)}
-              />
-              {refDropdownOpen && (() => {
-                const texto = (watch("referido_por") ?? "").trim().toLowerCase()
-                const coincidencias = referidosActivos.filter(r => !texto || r.nombre.toLowerCase().includes(texto))
-                const hayExacto = referidosActivos.some(r => r.nombre.toLowerCase() === texto)
-                return (coincidencias.length > 0 || (texto && !hayExacto)) ? (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-border rounded-md shadow-xl max-h-48 overflow-y-auto bg-card">
-                    {coincidencias.map(r => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onMouseDown={() => { setValue("referido_por", r.nombre); setRefDropdownOpen(false) }}
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
-                      >
-                        {r.nombre}
-                      </button>
-                    ))}
-                    {texto && !hayExacto && (
-                      <button
-                        type="button"
-                        onMouseDown={() => setRefDropdownOpen(false)}
-                        className="w-full text-left px-3 py-1.5 text-sm text-primary hover:bg-accent transition-colors border-t"
-                      >
-                        + Crear "{watch("referido_por")}"
-                      </button>
-                    )}
-                  </div>
-                ) : null
-              })()}
+              <div className="flex gap-1.5">
+                <select
+                  {...register("referido_por")}
+                  className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="">— seleccionar —</option>
+                  {referidosParaSelect(watch("referido_por")).map(r => (
+                    <option key={r.id} value={r.nombre}>{r.nombre}</option>
+                  ))}
+                </select>
+                <Button type="button" variant="outline" size="sm" className="px-2 shrink-0" title="Agregar referido nuevo"
+                  onClick={() => { setNuevoRefNombre(""); setDialogNuevoRef(true) }}>
+                  <UserPlus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="space-y-1">
               <Label>Referido al optometrista</Label>
@@ -813,6 +819,46 @@ export default function Pacientes() {
             <Button type="button" variant="outline" onClick={() => setDialogOptom(false)}>Cancelar</Button>
             <Button type="submit" disabled={crearOptomMut.isPending}>
               {crearOptomMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Crear y seleccionar
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      {/* Nuevo referido rápido */}
+      <Dialog open={dialogNuevoRef} onClose={() => setDialogNuevoRef(false)} className="max-w-sm">
+        <DialogHeader onClose={() => setDialogNuevoRef(false)}>Nuevo referido</DialogHeader>
+        <form onSubmit={e => { e.preventDefault(); if (nuevoRefNombre.trim()) crearRefMut.mutate(nuevoRefNombre.trim()) }}>
+          <DialogBody className="space-y-3">
+            <div className="space-y-1">
+              <Label>Nombre *</Label>
+              <Input placeholder="Ej: Dr. García" value={nuevoRefNombre} onChange={e => setNuevoRefNombre(e.target.value)} autoFocus required />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogNuevoRef(false)}>Cancelar</Button>
+            <Button type="submit" disabled={crearRefMut.isPending || !nuevoRefNombre.trim()}>
+              {crearRefMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Crear y seleccionar
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      {/* Nuevo origen rápido */}
+      <Dialog open={dialogNuevoOrigen} onClose={() => setDialogNuevoOrigen(false)} className="max-w-sm">
+        <DialogHeader onClose={() => setDialogNuevoOrigen(false)}>Nueva opción — ¿Cómo nos conoció?</DialogHeader>
+        <form onSubmit={e => { e.preventDefault(); if (nuevoOrigenNombre.trim()) crearOrigenMut.mutate(nuevoOrigenNombre.trim()) }}>
+          <DialogBody className="space-y-3">
+            <div className="space-y-1">
+              <Label>Nombre *</Label>
+              <Input placeholder="Ej: WhatsApp" value={nuevoOrigenNombre} onChange={e => setNuevoOrigenNombre(e.target.value)} autoFocus required />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogNuevoOrigen(false)}>Cancelar</Button>
+            <Button type="submit" disabled={crearOrigenMut.isPending || !nuevoOrigenNombre.trim()}>
+              {crearOrigenMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Crear y seleccionar
             </Button>
           </DialogFooter>
