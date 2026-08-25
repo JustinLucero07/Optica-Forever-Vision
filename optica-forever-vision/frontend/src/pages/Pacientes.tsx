@@ -33,6 +33,7 @@ interface Paciente {
   nombres: string
   apellidos: string
   fecha_nacimiento: string | null
+  edad: number | null
   genero: string | null
   telefono: string | null
   telefono_2: string | null
@@ -137,22 +138,31 @@ export default function Pacientes() {
   interface ReferidoMaster { id: number; nombre: string; activo: boolean }
   const { data: referidosMaster = [] } = useQuery<ReferidoMaster[]>({
     queryKey: ["referidos-list"],
-    queryFn: () => api.get("/referidos").then(r => r.data),
+    queryFn: () => api.get("/referidos", { params: { tipo: "referido" } }).then(r => r.data),
     staleTime: 60_000,
   })
   const referidosActivos = referidosMaster.filter(r => r.activo)
 
+  const { data: origenesMaster = [] } = useQuery<ReferidoMaster[]>({
+    queryKey: ["origenes-list"],
+    queryFn: () => api.get("/referidos", { params: { tipo: "origen" } }).then(r => r.data),
+    staleTime: 60_000,
+  })
+  const origenesActivos = origenesMaster.filter(r => r.activo)
+
   const [editandoRef, setEditandoRef] = useState<ReferidoMaster | null>(null)
   const [nombreRefEdit, setNombreRefEdit] = useState("")
+  const [origenDropdownOpen, setOrigenDropdownOpen] = useState(false)
 
   const editarRefMut = useMutation({
     mutationFn: (r: ReferidoMaster) => api.put(`/referidos/${r.id}`, { nombre: r.nombre, activo: r.activo }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["referidos-list"] })
+      qc.invalidateQueries({ queryKey: ["origenes-list"] })
       qc.invalidateQueries({ queryKey: ["referidos-stats"] })
       qc.invalidateQueries({ queryKey: ["pacientes"] })
       setEditandoRef(null)
-      toast.success("Referido actualizado")
+      toast.success("Actualizado")
     },
     onError: (e) => toast.error(errMsg(e, "Error al actualizar")),
   })
@@ -161,7 +171,8 @@ export default function Pacientes() {
     mutationFn: (id: number) => api.delete(`/referidos/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["referidos-list"] })
-      toast.success("Referido eliminado de la lista")
+      qc.invalidateQueries({ queryKey: ["origenes-list"] })
+      toast.success("Eliminado de la lista")
     },
     onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
   })
@@ -181,10 +192,12 @@ export default function Pacientes() {
     onError: (e) => toast.error(errMsg(e, "Error al crear optometrista")),
   })
 
-  function upsertReferido(nombre: string | undefined) {
+  function upsertReferido(nombre: string | undefined, tipo: "referido" | "origen" = "referido") {
     const n = (nombre ?? "").trim()
     if (!n) return
-    api.post("/referidos", { nombre: n }).then(() => qc.invalidateQueries({ queryKey: ["referidos-list"] })).catch(() => {})
+    api.post("/referidos", { nombre: n, tipo })
+      .then(() => qc.invalidateQueries({ queryKey: [tipo === "origen" ? "origenes-list" : "referidos-list"] }))
+      .catch(() => {})
   }
 
   const crearMut = useMutation({
@@ -192,6 +205,7 @@ export default function Pacientes() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["pacientes"] }); cerrarDialog(); toast.success("Paciente creado")
       upsertReferido(variables.referido_por)
+      upsertReferido(variables.origen, "origen")
     },
     onError: (e) => toast.error(errMsg(e, "Error al crear")),
   })
@@ -201,6 +215,7 @@ export default function Pacientes() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["pacientes"] }); cerrarDialog(); toast.success("Paciente actualizado")
       upsertReferido(variables.referido_por)
+      upsertReferido(variables.origen, "origen")
     },
     onError: (e) => toast.error(errMsg(e, "Error al actualizar")),
   })
@@ -364,6 +379,59 @@ export default function Pacientes() {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Administrar "¿Cómo nos conoció?"</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              {origenesMaster.length === 0 && (
+                <p className="text-xs text-muted-foreground">Aún no hay opciones registradas.</p>
+              )}
+              {origenesMaster.map(r => (
+                <div key={r.id} className="flex items-center gap-2 py-1 border-b last:border-0">
+                  {editandoRef?.id === r.id ? (
+                    <>
+                      <Input
+                        value={nombreRefEdit}
+                        onChange={e => setNombreRefEdit(e.target.value)}
+                        className="h-8 text-sm flex-1"
+                        autoFocus
+                      />
+                      <Button size="sm" className="h-8" disabled={editarRefMut.isPending}
+                        onClick={() => editarRefMut.mutate({ ...r, nombre: nombreRefEdit })}>
+                        Guardar
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => setEditandoRef(null)}>
+                        Cancelar
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`flex-1 text-sm truncate ${!r.activo ? "text-muted-foreground line-through" : ""}`}>
+                        {r.nombre}
+                      </span>
+                      <button
+                        title="Editar"
+                        onClick={() => { setEditandoRef(r); setNombreRefEdit(r.nombre) }}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        title="Eliminar"
+                        onClick={() => eliminarRefMut.mutate(r.id)}
+                        disabled={eliminarRefMut.isPending}
+                        className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           {cargandoRef && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Cargando…</div>}
           {!cargandoRef && referidos.length === 0 && (
             <Card className="py-12">
@@ -465,18 +533,19 @@ export default function Pacientes() {
               <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">
                 <SortHeader col="cedula" label="Cédula" />
               </th>
+              <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Edad</th>
               <th className="text-left px-4 py-3 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Teléfono</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
             {isLoading && (
-              <tr><td colSpan={5} className="text-center py-12 text-muted-foreground">
+              <tr><td colSpan={6} className="text-center py-12 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin inline mb-2" /><br/>Cargando pacientes…
               </td></tr>
             )}
             {!isLoading && pacientes.length === 0 && (
-              <tr><td colSpan={5} className="text-center py-14 text-muted-foreground">
+              <tr><td colSpan={6} className="text-center py-14 text-muted-foreground">
                 <Search className="h-8 w-8 mx-auto mb-2 opacity-30" />
                 <p className="font-medium">No se encontraron pacientes</p>
                 <p className="text-xs mt-1">Intenta con otro nombre o cédula</p>
@@ -497,6 +566,7 @@ export default function Pacientes() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground tabular-nums">{p.cedula ?? "—"}</td>
+                <td className="px-4 py-3 text-muted-foreground tabular-nums">{p.edad != null ? `${p.edad} años` : "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{p.telefono ?? "—"}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1 justify-end">
@@ -582,14 +652,43 @@ export default function Pacientes() {
               <Label>Dirección</Label>
               <Input {...register("direccion")} />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 relative">
               <Label>¿Cómo nos conoció?</Label>
-              <select {...register("origen")} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <option value="">— seleccionar —</option>
-                {["Recomendación", "Facebook", "Instagram", "TikTok", "Google", "Publicidad", "Redes Sociales", "Otro"].map(o => (
-                  <option key={o} value={o}>{o}</option>
-                ))}
-              </select>
+              <Input
+                placeholder="Ej: Facebook, Recomendación..."
+                autoComplete="off"
+                {...register("origen")}
+                onFocus={() => setOrigenDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setOrigenDropdownOpen(false), 150)}
+              />
+              {origenDropdownOpen && (() => {
+                const texto = (watch("origen") ?? "").trim().toLowerCase()
+                const coincidencias = origenesActivos.filter(r => !texto || r.nombre.toLowerCase().includes(texto))
+                const hayExacto = origenesActivos.some(r => r.nombre.toLowerCase() === texto)
+                return (coincidencias.length > 0 || (texto && !hayExacto)) ? (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-border rounded-md shadow-xl max-h-48 overflow-y-auto bg-card">
+                    {coincidencias.map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onMouseDown={() => { setValue("origen", r.nombre); setOrigenDropdownOpen(false) }}
+                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+                      >
+                        {r.nombre}
+                      </button>
+                    ))}
+                    {texto && !hayExacto && (
+                      <button
+                        type="button"
+                        onMouseDown={() => setOrigenDropdownOpen(false)}
+                        className="w-full text-left px-3 py-1.5 text-sm text-primary hover:bg-accent transition-colors border-t"
+                      >
+                        + Crear "{watch("origen")}"
+                      </button>
+                    )}
+                  </div>
+                ) : null
+              })()}
             </div>
             <div className="space-y-1 relative">
               <Label>Referido por (nombre externo)</Label>

@@ -764,6 +764,7 @@ export default function PacienteDetalle() {
               <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {campo("Cédula", paciente.cedula)}
                 {campo("Nacimiento", paciente.fecha_nacimiento)}
+                {campo("Edad", paciente.edad != null ? `${paciente.edad} años` : null)}
                 {campo("Género", paciente.genero)}
                 {campo("Ocupación", paciente.ocupacion)}
                 {campo("Teléfono", paciente.telefono)}

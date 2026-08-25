@@ -1,6 +1,16 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
+
+
+def _calcular_edad(fecha_nacimiento: date | None) -> int | None:
+    if not fecha_nacimiento:
+        return None
+    hoy = date.today()
+    edad = hoy.year - fecha_nacimiento.year
+    if (hoy.month, hoy.day) < (fecha_nacimiento.month, fecha_nacimiento.day):
+        edad -= 1
+    return edad if edad >= 0 else None
 
 
 class PacienteCreate(BaseModel):
@@ -64,6 +74,11 @@ class PacienteOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @computed_field
+    @property
+    def edad(self) -> int | None:
+        return _calcular_edad(self.fecha_nacimiento)
+
 
 class PacienteListItem(BaseModel):
     id: int
@@ -72,6 +87,12 @@ class PacienteListItem(BaseModel):
     nombres: str
     apellidos: str
     telefono: str | None
+    fecha_nacimiento: date | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def edad(self) -> int | None:
+        return _calcular_edad(self.fecha_nacimiento)

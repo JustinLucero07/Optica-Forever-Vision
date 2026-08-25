@@ -34,6 +34,7 @@ interface Orden {
   proveedor_id: number | null
   lab_proveedor: string
   lab_telefono: string | null
+  referencia: string | null
   fecha_envio: string
   fecha_entrega_est: string | null
   fecha_entrega_real: string | null
@@ -139,6 +140,7 @@ const EMPTY_FORM = {
   tipo: "Lentes monofocales",
   fecha_envio: toISO(new Date()),
   notas: "",
+  referencia: "",
   armazon_ref: "",
   armazon_color: "",
   armazon_talla: "",
@@ -707,6 +709,7 @@ export default function Ordenes() {
       tipo: o.tipo,
       fecha_envio: o.fecha_envio,
       notas: o.notas ?? "",
+      referencia: o.referencia ?? "",
       armazon_ref: (o as any).armazon_ref ?? "",
       armazon_color: (o as any).armazon_color ?? "",
       armazon_talla: (o as any).armazon_talla ?? "",
@@ -822,6 +825,7 @@ export default function Ordenes() {
           descripcion,
           fecha_envio: form.fecha_envio,
           notas: form.notas || null,
+          referencia: form.referencia || null,
           proveedor_id: parte.proveedor_id ? Number(parte.proveedor_id) : null,
           lab_proveedor: labProv,
           lab_telefono: parte.fuente === "stock" ? null : (parte.lab_telefono || null),
@@ -841,6 +845,7 @@ export default function Ordenes() {
             descripcion,
             fecha_envio: form.fecha_envio,
             notas: [form.notas, `Ojo: ${parte.ojos}`, parte.fuente === "stock" ? "Fuente: Stock propio" : null, prodNombre ? `Producto: ${prodNombre}` : null].filter(Boolean).join(" | ") || null,
+            referencia: form.referencia || null,
             proveedor_id: parte.proveedor_id ? Number(parte.proveedor_id) : null,
             lab_proveedor: labProv,
             lab_telefono: parte.fuente === "stock" ? null : (parte.lab_telefono || null),
@@ -1707,6 +1712,15 @@ export default function Ordenes() {
                   onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
                   placeholder="Urgente · instrucciones especiales · observaciones para el lab…"
                 />
+                <div className="mt-3">
+                  <label className="text-xs font-medium text-muted-foreground">N° referencia / factura</label>
+                  <Input
+                    value={form.referencia}
+                    onChange={e => setForm(f => ({ ...f, referencia: e.target.value }))}
+                    placeholder="Ej: 001-002-123456789"
+                    className="mt-1"
+                  />
+                </div>
               </div>
 
             </div>

@@ -72,6 +72,7 @@ class OrdenCreate(BaseModel):
     proveedor_id: int | None = None
     lab_proveedor: str
     lab_telefono: str | None = None
+    referencia: str | None = None
     fecha_envio: date
     fecha_entrega_est: date | None = None
     tipo: str
@@ -97,6 +98,7 @@ class OrdenUpdate(BaseModel):
     proveedor_id: int | None = None
     lab_proveedor: str | None = None
     lab_telefono: str | None = None
+    referencia: str | None = None
     fecha_entrega_est: date | None = None
     fecha_entrega_real: date | None = None
     estado: str | None = None
@@ -128,6 +130,7 @@ class OrdenOut(BaseModel):
     proveedor_id: int | None
     lab_proveedor: str
     lab_telefono: str | None
+    referencia: str | None = None
     fecha_envio: date
     fecha_entrega_est: date | None
     fecha_entrega_real: date | None

@@ -56,6 +56,7 @@ class OrdenTrabajo(Base):
     )
     lab_proveedor: Mapped[str] = mapped_column(String(150), nullable=False)
     lab_telefono: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    referencia: Mapped[str | None] = mapped_column(String(50), nullable=True)
     fecha_envio: Mapped[date] = mapped_column(Date, nullable=False)
     fecha_entrega_est: Mapped[date | None] = mapped_column(Date, nullable=True)
     fecha_entrega_real: Mapped[date | None] = mapped_column(Date, nullable=True)
