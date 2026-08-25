@@ -87,6 +87,7 @@ def crear_venta(
         subtotal=subtotal,
         descuento=data.descuento,
         total=total,
+        referencia=data.referencia,
         notas=data.notas,
     )
     db.add(venta)

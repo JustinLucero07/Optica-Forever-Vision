@@ -26,7 +26,7 @@ interface VentaItem {
 interface Venta {
   id: number; numero: string; paciente_id: number | null; fecha: string
   subtotal: number; descuento: number; total: number; estado: string
-  notas: string | null; items: VentaItem[]
+  referencia: string | null; notas: string | null; items: VentaItem[]
 }
 interface Paciente {
   id: number; nombres: string; apellidos: string; cedula: string
@@ -419,6 +419,12 @@ export default function VentaDetalle() {
             </table>
           </CardContent>
         </Card>
+      )}
+
+      {v.referencia && (
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium">N° referencia/factura:</span> {v.referencia}
+        </p>
       )}
 
       {v.notas && (

@@ -581,7 +581,7 @@ export default function Ordenes() {
 
   const { data: productosMini = [] } = useQuery<ProductoMin[]>({
     queryKey: ["productos-mini"],
-    queryFn: () => api.get("/productos", { params: { limit: 500 } }).then(r => r.data),
+    queryFn: () => api.get("/productos", { params: { limit: 5000 } }).then(r => r.data),
     staleTime: 120_000,
   })
 
@@ -787,9 +787,6 @@ export default function Ordenes() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.paciente_id) { toast.error("Selecciona el paciente"); return }
-    if (partes.some(p => p.fuente === "lab" && !p.lab_proveedor)) {
-      toast.error("Ingresa el nombre del laboratorio en cada parte de tipo 'Laboratorio'"); return
-    }
 
     const descripcion = rxToDesc(rx) || "—"
     setSaving(true)
@@ -817,7 +814,7 @@ export default function Ordenes() {
       }
       if (editOrden) {
         const parte = partes[0]
-        const labProv = parte.fuente === "stock" ? "Stock propio" : parte.lab_proveedor
+        const labProv = parte.fuente === "stock" ? "Stock propio" : (parte.lab_proveedor || "Pendiente")
         await api.put(`/ordenes/${editOrden.id}`, {
           paciente_id: Number(form.paciente_id),
           consulta_id: consultaSelId ? Number(consultaSelId) : editOrden.consulta_id ?? null,
@@ -835,7 +832,7 @@ export default function Ordenes() {
         toast.success("Orden actualizada")
       } else {
         for (const parte of partes) {
-          const labProv = parte.fuente === "stock" ? "Stock propio" : parte.lab_proveedor
+          const labProv = parte.fuente === "stock" ? "Stock propio" : (parte.lab_proveedor || "Pendiente")
           const prodNombre = parte.producto_id ? productosMini.find(p => p.id === Number(parte.producto_id))?.nombre : null
           await api.post("/ordenes", {
             paciente_id: Number(form.paciente_id),
@@ -1043,6 +1040,13 @@ export default function Ordenes() {
                       estados={ESTADOS_ORDEN}
                       current={o.estado}
                       onSelect={s => {
+                        const sinProveedor = o.lab_proveedor !== "Stock propio" && (!o.lab_proveedor || o.lab_proveedor === "Pendiente")
+                        if (s === "listo" && sinProveedor) {
+                          setEstadoDropdown(null)
+                          toast.error("Completa el laboratorio proveedor antes de marcar la orden como lista")
+                          openEdit(o)
+                          return
+                        }
                         const IRREVERSIBLES = ["entregado", "rechazado"]
                         if (IRREVERSIBLES.includes(s)) {
                           confirmAction(`¿Cambiar estado a "${s}"? Difícil de revertir.`, () => estadoMut.mutate({ id: o.id, estado: s }), "Cambiar")
@@ -1575,7 +1579,7 @@ export default function Ordenes() {
 
                       {/* Campos lab */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {parte.fuente === "lab" && (
+                        {parte.fuente === "lab" && editOrden && (
                           <>
                             <div>
                               <label className="text-xs font-medium text-muted-foreground">Proveedor del sistema</label>
@@ -1589,14 +1593,19 @@ export default function Ordenes() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-xs font-medium text-muted-foreground">Nombre del laboratorio *</label>
-                              <Input value={parte.lab_proveedor} onChange={e => setParteField(parte._id, "lab_proveedor", e.target.value)} placeholder="Nombre del lab" className="mt-1" />
+                              <label className="text-xs font-medium text-muted-foreground">Nombre del laboratorio</label>
+                              <Input value={parte.lab_proveedor === "Pendiente" ? "" : parte.lab_proveedor} onChange={e => setParteField(parte._id, "lab_proveedor", e.target.value)} placeholder="Nombre del lab" className="mt-1" />
                             </div>
                             <div>
                               <label className="text-xs font-medium text-muted-foreground">WhatsApp del lab</label>
                               <Input value={parte.lab_telefono} onChange={e => setParteField(parte._id, "lab_telefono", e.target.value)} placeholder="0999123456" className="mt-1" />
                             </div>
                           </>
+                        )}
+                        {parte.fuente === "lab" && !editOrden && (
+                          <div className="col-span-2 sm:col-span-3 rounded-lg border border-dashed border-violet-300 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-950/20 px-3 py-2 text-xs text-violet-700 dark:text-violet-300">
+                            El laboratorio proveedor se asigna después, editando la orden cuando esté lista para enviarse.
+                          </div>
                         )}
                         <div>
                           <label className="text-xs font-medium text-muted-foreground">Entrega estimada</label>

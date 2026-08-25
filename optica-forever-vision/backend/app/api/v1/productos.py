@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.deps import get_current_user, require_roles
@@ -51,7 +52,11 @@ def crear(
 ):
     prod = Producto(**data.model_dump())
     db.add(prod)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe un producto con ese nombre o código")
     db.refresh(prod)
     return db.execute(select(Producto).options(_eager).where(Producto.id == prod.id)).scalar_one()
 
@@ -76,7 +81,11 @@ def actualizar(
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     for campo, valor in data.model_dump(exclude_unset=True).items():
         setattr(prod, campo, valor)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe otro producto con ese nombre o código")
     return db.execute(select(Producto).options(_eager).where(Producto.id == pid)).scalar_one()
 
 

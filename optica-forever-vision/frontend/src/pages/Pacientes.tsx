@@ -15,6 +15,17 @@ import { useAuthStore } from "@/store/auth"
 import { Paginador } from "@/components/ui/Paginador"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
+function calcularEdad(fechaNac: string): number | null {
+  if (!fechaNac) return null
+  const nac = new Date(fechaNac)
+  if (isNaN(nac.getTime())) return null
+  const hoy = new Date()
+  let edad = hoy.getFullYear() - nac.getFullYear()
+  const m = hoy.getMonth() - nac.getMonth()
+  if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--
+  return edad >= 0 ? edad : null
+}
+
 interface Paciente {
   id: number
   numero: string
@@ -98,6 +109,7 @@ export default function Pacientes() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [expandidoRef, setExpandidoRef] = useState<string | null>(null)
   const [dialogOptom, setDialogOptom] = useState(false)
+  const [refDropdownOpen, setRefDropdownOpen] = useState(false)
   const qc = useQueryClient()
   const rol = useAuthStore((s) => s.user?.role)
 
@@ -122,7 +134,39 @@ export default function Pacientes() {
     enabled: tab === "referidos",
   })
 
-  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<PacienteForm>()
+  interface ReferidoMaster { id: number; nombre: string; activo: boolean }
+  const { data: referidosMaster = [] } = useQuery<ReferidoMaster[]>({
+    queryKey: ["referidos-list"],
+    queryFn: () => api.get("/referidos").then(r => r.data),
+    staleTime: 60_000,
+  })
+  const referidosActivos = referidosMaster.filter(r => r.activo)
+
+  const [editandoRef, setEditandoRef] = useState<ReferidoMaster | null>(null)
+  const [nombreRefEdit, setNombreRefEdit] = useState("")
+
+  const editarRefMut = useMutation({
+    mutationFn: (r: ReferidoMaster) => api.put(`/referidos/${r.id}`, { nombre: r.nombre, activo: r.activo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["referidos-list"] })
+      qc.invalidateQueries({ queryKey: ["referidos-stats"] })
+      qc.invalidateQueries({ queryKey: ["pacientes"] })
+      setEditandoRef(null)
+      toast.success("Referido actualizado")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al actualizar")),
+  })
+
+  const eliminarRefMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/referidos/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["referidos-list"] })
+      toast.success("Referido eliminado de la lista")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
+  })
+
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<PacienteForm>()
   const { register: rO, handleSubmit: hsO, reset: resetO, formState: { errors: errO } } = useForm<OptomeForm>()
 
   const crearOptomMut = useMutation({
@@ -137,15 +181,27 @@ export default function Pacientes() {
     onError: (e) => toast.error(errMsg(e, "Error al crear optometrista")),
   })
 
+  function upsertReferido(nombre: string | undefined) {
+    const n = (nombre ?? "").trim()
+    if (!n) return
+    api.post("/referidos", { nombre: n }).then(() => qc.invalidateQueries({ queryKey: ["referidos-list"] })).catch(() => {})
+  }
+
   const crearMut = useMutation({
     mutationFn: (d: PacienteForm) => api.post("/pacientes", toPayload(d)),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pacientes"] }); cerrarDialog(); toast.success("Paciente creado") },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["pacientes"] }); cerrarDialog(); toast.success("Paciente creado")
+      upsertReferido(variables.referido_por)
+    },
     onError: (e) => toast.error(errMsg(e, "Error al crear")),
   })
 
   const editarMut = useMutation({
     mutationFn: (d: PacienteForm) => api.put(`/pacientes/${editando!.id}`, toPayload(d)),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["pacientes"] }); cerrarDialog(); toast.success("Paciente actualizado") },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["pacientes"] }); cerrarDialog(); toast.success("Paciente actualizado")
+      upsertReferido(variables.referido_por)
+    },
     onError: (e) => toast.error(errMsg(e, "Error al actualizar")),
   })
 
@@ -254,6 +310,60 @@ export default function Pacientes() {
           <p className="text-sm text-muted-foreground">
             Pacientes agrupados por quién los refirió a la óptica.
           </p>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Administrar lista de referidos</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              {referidosMaster.length === 0 && (
+                <p className="text-xs text-muted-foreground">Aún no hay referidos registrados.</p>
+              )}
+              {referidosMaster.map(r => (
+                <div key={r.id} className="flex items-center gap-2 py-1 border-b last:border-0">
+                  {editandoRef?.id === r.id ? (
+                    <>
+                      <Input
+                        value={nombreRefEdit}
+                        onChange={e => setNombreRefEdit(e.target.value)}
+                        className="h-8 text-sm flex-1"
+                        autoFocus
+                      />
+                      <Button size="sm" className="h-8" disabled={editarRefMut.isPending}
+                        onClick={() => editarRefMut.mutate({ ...r, nombre: nombreRefEdit })}>
+                        Guardar
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => setEditandoRef(null)}>
+                        Cancelar
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`flex-1 text-sm truncate ${!r.activo ? "text-muted-foreground line-through" : ""}`}>
+                        {r.nombre}
+                      </span>
+                      <button
+                        title="Editar"
+                        onClick={() => { setEditandoRef(r); setNombreRefEdit(r.nombre) }}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        title="Eliminar"
+                        onClick={() => eliminarRefMut.mutate(r.id)}
+                        disabled={eliminarRefMut.isPending}
+                        className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           {cargandoRef && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> Cargando…</div>}
           {!cargandoRef && referidos.length === 0 && (
             <Card className="py-12">
@@ -436,6 +546,12 @@ export default function Pacientes() {
             <div className="space-y-1">
               <Label>Fecha de Nacimiento</Label>
               <Input type="date" {...register("fecha_nacimiento")} />
+              {(() => {
+                const edad = calcularEdad(watch("fecha_nacimiento"))
+                return edad != null ? (
+                  <p className="text-xs text-muted-foreground">{edad} año{edad !== 1 ? "s" : ""}</p>
+                ) : null
+              })()}
             </div>
             <div className="space-y-1">
               <Label>Género</Label>
@@ -475,9 +591,43 @@ export default function Pacientes() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 relative">
               <Label>Referido por (nombre externo)</Label>
-              <Input placeholder="Ej: Dr. García, María López..." {...register("referido_por")} />
+              <Input
+                placeholder="Ej: Dr. García, María López..."
+                autoComplete="off"
+                {...register("referido_por")}
+                onFocus={() => setRefDropdownOpen(true)}
+                onBlur={() => setTimeout(() => setRefDropdownOpen(false), 150)}
+              />
+              {refDropdownOpen && (() => {
+                const texto = (watch("referido_por") ?? "").trim().toLowerCase()
+                const coincidencias = referidosActivos.filter(r => !texto || r.nombre.toLowerCase().includes(texto))
+                const hayExacto = referidosActivos.some(r => r.nombre.toLowerCase() === texto)
+                return (coincidencias.length > 0 || (texto && !hayExacto)) ? (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-border rounded-md shadow-xl max-h-48 overflow-y-auto bg-card">
+                    {coincidencias.map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onMouseDown={() => { setValue("referido_por", r.nombre); setRefDropdownOpen(false) }}
+                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+                      >
+                        {r.nombre}
+                      </button>
+                    ))}
+                    {texto && !hayExacto && (
+                      <button
+                        type="button"
+                        onMouseDown={() => setRefDropdownOpen(false)}
+                        className="w-full text-left px-3 py-1.5 text-sm text-primary hover:bg-accent transition-colors border-t"
+                      >
+                        + Crear "{watch("referido_por")}"
+                      </button>
+                    )}
+                  </div>
+                ) : null
+              })()}
             </div>
             <div className="space-y-1">
               <Label>Referido al optometrista</Label>

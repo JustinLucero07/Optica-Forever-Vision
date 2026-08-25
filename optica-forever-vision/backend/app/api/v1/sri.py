@@ -193,6 +193,7 @@ async def importar_xml(
             match_info  = _match_item(db, codigo_prov, descripcion, proveedor_id)
 
             items.append({
+                "id":              None,
                 "codigo":          codigo_prov,
                 "descripcion":     descripcion,
                 "cantidad":        cantidad,
@@ -217,7 +218,7 @@ async def importar_xml(
         db.add(cxp)
         db.flush()  # get cxp.id before commit
         for item in items:
-            db.add(CxPItem(
+            cxp_item = CxPItem(
                 cxp_id=cxp.id,
                 codigo_proveedor=item["codigo"] or None,
                 descripcion=item["descripcion"] or "—",
@@ -225,7 +226,10 @@ async def importar_xml(
                 precio_unitario=item["precio_unitario"],
                 subtotal=item["subtotal"],
                 producto_id=item.get("producto_id"),
-            ))
+            )
+            db.add(cxp_item)
+            db.flush()
+            item["id"] = cxp_item.id
         db.commit()
         db.refresh(cxp)
         cxp_id = cxp.id
@@ -251,6 +255,20 @@ async def importar_xml(
         "mensaje":          f"Factura {numero} — {con_match}/{len(items)} ítems vinculados al inventario"
                             + (f" — proveedor '{proveedor_match.nombre}'" if proveedor_match else ""),
     }
+
+
+@router.delete("/items/{item_id}", status_code=204)
+def eliminar_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "cajero")),
+):
+    """Elimina un ítem de una factura importada (no afecta el total de la CxP)."""
+    item = db.get(CxPItem, item_id)
+    if not item:
+        raise HTTPException(404, detail="Ítem no encontrado")
+    db.delete(item)
+    db.commit()
 
 
 # ── Mapeos ─────────────────────────────────────────────────────────────────────

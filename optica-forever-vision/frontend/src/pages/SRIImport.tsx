@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 interface Producto { id: number; nombre: string; codigo: string | null }
 
 interface SRIItem {
+  id: number | null
   codigo: string
   descripcion: string
   cantidad: number
@@ -82,7 +83,7 @@ export default function SRIImport() {
 
   const { data: productos = [] } = useQuery<Producto[]>({
     queryKey: ["productos-mini"],
-    queryFn: () => api.get("/productos", { params: { limit: 500 } }).then(r => r.data),
+    queryFn: () => api.get("/productos", { params: { limit: 5000 } }).then(r => r.data),
   })
 
   const { data: mapeos = [], refetch: refetchMapeos } = useQuery<MapeoExistente[]>({
@@ -105,6 +106,37 @@ export default function SRIImport() {
       toast.success(data.mensaje)
     },
     onError: (e) => toast.error(errMsg(e, "Error al procesar el XML")),
+  })
+
+  const eliminarItemMut = useMutation({
+    mutationFn: (itemId: number) => api.delete(`/sri/items/${itemId}`),
+    onSuccess: (_data, itemId) => {
+      setResultado(prev => {
+        if (!prev) return prev
+        const idx = prev.items.findIndex(it => it.id === itemId)
+        const nuevoItems = prev.items.filter(it => it.id !== itemId)
+        const eraSinMatch = idx >= 0 && prev.items[idx].match === "sin_match"
+        return {
+          ...prev,
+          items: nuevoItems,
+          items_sin_match: eraSinMatch ? prev.items_sin_match - 1 : prev.items_sin_match,
+          items_con_match: eraSinMatch ? prev.items_con_match : prev.items_con_match - 1,
+        }
+      })
+      setOverrides(prev => {
+        const idx = resultado?.items.findIndex(it => it.id === itemId) ?? -1
+        if (idx < 0) return prev
+        const next: Record<number, number> = {}
+        for (const [k, v] of Object.entries(prev)) {
+          const ki = Number(k)
+          if (ki === idx) continue
+          next[ki > idx ? ki - 1 : ki] = v
+        }
+        return next
+      })
+      toast.success("Ítem eliminado")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar ítem")),
   })
 
   const mapearMut = useMutation({
@@ -361,6 +393,7 @@ export default function SRIImport() {
                       <th className="text-right px-4 py-2 font-medium w-16">Cant.</th>
                       <th className="text-right px-4 py-2 font-medium w-24">Subtotal</th>
                       <th className="text-left px-4 py-2 font-medium w-64">Producto en inventario</th>
+                      <th className="px-4 py-2 w-10"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -399,6 +432,19 @@ export default function SRIImport() {
                               </div>
                             ) : (
                               <span className="text-xs text-muted-foreground italic">Sin código proveedor</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2">
+                            {item.id != null && (
+                              <button
+                                type="button"
+                                title="Eliminar ítem"
+                                onClick={() => eliminarItemMut.mutate(item.id as number)}
+                                disabled={eliminarItemMut.isPending}
+                                className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             )}
                           </td>
                         </tr>

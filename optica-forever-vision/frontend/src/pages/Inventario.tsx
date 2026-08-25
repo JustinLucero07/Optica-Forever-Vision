@@ -6,6 +6,7 @@ import { Plus, Search, Pencil, Package, Loader2, AlertTriangle, ArrowDown, Tag, 
 import { deleteWithUndo } from "@/lib/confirm"
 
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -66,13 +67,13 @@ export default function Inventario() {
   const crearMut = useMutation({
     mutationFn: (d: ProdForm) => api.post("/productos", toPayloadProd(d)),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["productos"] }); cerrarProd(); toast.success("Producto creado") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+    onError: (e) => toast.error(errMsg(e, "Error al crear producto")),
   })
 
   const editarMut = useMutation({
     mutationFn: (d: ProdForm) => api.put(`/productos/${editando!.id}`, toPayloadProd(d)),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["productos"] }); cerrarProd(); toast.success("Producto actualizado") },
-    onError: (e: any) => toast.error(e?.response?.data?.detail ?? "Error"),
+    onError: (e) => toast.error(errMsg(e, "Error al actualizar producto")),
   })
 
   const entradaMut = useMutation({
@@ -118,7 +119,9 @@ export default function Inventario() {
       categoria_id: d.categoria_id ? Number(d.categoria_id) : null,
       proveedor_id: d.proveedor_id ? Number(d.proveedor_id) : null,
       precio_costo: Number(d.precio_costo), precio_venta: Number(d.precio_venta),
-      stock_actual: Number(d.stock_actual), stock_minimo: Number(d.stock_minimo), unidad: d.unidad,
+      stock_minimo: Number(d.stock_minimo), unidad: d.unidad,
+      // stock_actual solo se envía al crear — para editarlo después se usa Entrada/Ajuste (con auditoría)
+      ...(editando ? {} : { stock_actual: Number(d.stock_actual) }),
     }
   }
 
@@ -294,8 +297,9 @@ export default function Inventario() {
               <Input type="number" step="0.01" min="0" {...regProd("precio_venta", { required: "Requerido" })} />
             </div>
             <div className="space-y-1">
-              <Label>Stock Inicial</Label>
-              <Input type="number" step="1" min="0" {...regProd("stock_actual")} />
+              <Label>{editando ? "Stock actual" : "Stock Inicial"}</Label>
+              <Input type="number" step="1" min="0" disabled={!!editando} {...regProd("stock_actual")} />
+              {editando && <p className="text-xs text-muted-foreground">Usa "Entrada" o "Ajuste" para modificar el stock</p>}
             </div>
             <div className="space-y-1">
               <Label>Stock Mínimo (alerta)</Label>

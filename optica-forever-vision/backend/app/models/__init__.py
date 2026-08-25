@@ -4,5 +4,6 @@ from app.models.proveedor import Proveedor  # noqa: F401
 from app.models.sri_map import ProveedorProductoMap  # noqa: F401
 from app.models.cxp_item import CxPItem  # noqa: F401
 from app.models.sueldo import SueldoConfig, PagoSueldo  # noqa: F401
+from app.models.referido import Referido  # noqa: F401
 
-__all__ = ["User", "UserRole", "Configuracion", "Proveedor", "ProveedorProductoMap", "CxPItem", "SueldoConfig", "PagoSueldo"]
+__all__ = ["User", "UserRole", "Configuracion", "Proveedor", "ProveedorProductoMap", "CxPItem", "SueldoConfig", "PagoSueldo", "Referido"]

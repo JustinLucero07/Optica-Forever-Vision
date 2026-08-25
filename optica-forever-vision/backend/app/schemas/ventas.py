@@ -25,6 +25,7 @@ class VentaCreate(BaseModel):
     paciente_id: int | None = None
     fecha: date
     descuento: float = 0
+    referencia: str | None = None
     notas: str | None = None
     items: list[VentaItemIn]
 
@@ -52,6 +53,7 @@ class VentaOut(BaseModel):
     descuento: float
     total: float
     estado: str
+    referencia: str | None = None
     notas: str | None
     created_at: datetime
     items: list[VentaItemOut]

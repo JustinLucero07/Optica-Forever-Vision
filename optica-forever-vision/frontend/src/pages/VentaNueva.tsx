@@ -115,6 +115,7 @@ export default function VentaNueva() {
       : initFromDraft("pacienteId", "")
   )
   const [descuentoGlobal, setDescuentoGlobal] = useState(initFromDraft("descuentoGlobal", "0"))
+  const [referencia, setReferencia] = useState(initFromDraft("referencia", ""))
   const [notas, setNotas] = useState(
     ordenInicial ? `Orden ${ordenInicial.numero} — ${ordenInicial.tipo}`
       : presupuesto ? `Basado en presupuesto ${presupuesto.numero}`
@@ -130,11 +131,11 @@ export default function VentaNueva() {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
     draftTimerRef.current = setTimeout(() => {
       if (cart.length > 0 || pacienteId || notas) {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({ cart, pacienteId, notas, descuentoGlobal }))
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ cart, pacienteId, notas, descuentoGlobal, referencia }))
       }
     }, 800)
     return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current) }
-  }, [cart, pacienteId, notas, descuentoGlobal, hasExternalInit])
+  }, [cart, pacienteId, notas, descuentoGlobal, referencia, hasExternalInit])
   const [showOrdenPicker, setShowOrdenPicker] = useState(false)
   const [ordenBusq, setOrdenBusq] = useState("")
 
@@ -192,6 +193,7 @@ export default function VentaNueva() {
       paciente_id: pacienteId ? Number(pacienteId) : null,
       fecha,
       descuento: Number(descuentoGlobal),
+      referencia: referencia || null,
       notas: notas || null,
       items: cart.map(it => ({
         producto_id: it.producto_id,
@@ -393,6 +395,10 @@ export default function VentaNueva() {
               <div className="space-y-1">
                 <Label className="text-xs">Descuento global ($)</Label>
                 <Input type="number" min="0" step="0.01" value={descuentoGlobal} onChange={e => setDescuentoGlobal(e.target.value)} className="h-9 w-32" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">N° referencia / factura</Label>
+                <Input value={referencia} onChange={e => setReferencia(e.target.value)} placeholder="Ej: 001-002-123456789" className="h-9 w-44" />
               </div>
               <div className="space-y-1 flex-1">
                 <Label className="text-xs">Notas</Label>

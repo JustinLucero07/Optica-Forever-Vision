@@ -23,6 +23,7 @@ class Venta(Base):
     descuento: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="pendiente")
+    referencia: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()
