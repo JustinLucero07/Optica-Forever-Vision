@@ -317,7 +317,7 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
   <style>
     ${PDF_BASE_CSS}
     @page{size:A4;margin:9mm}
-    body{max-width:100%!important;padding:0!important;font-size:10.5px!important}
+    body{max-width:340px!important;padding:0!important;font-size:10.5px!important;margin:0!important}
     .doc-hdr{margin-bottom:8px!important}
     .doc-hdr-title{font-size:9.5px!important}
     .doc-body{gap:6px!important}
@@ -376,17 +376,7 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
       <div><div class="l">Material</div>${rx.material || "—"}</div>
     </div>
     ${rx.diagnostico ? `<div class="doc-section" style="margin-top:6px"><span style="font-weight:600;color:#374151">Diagnóstico: </span>${rx.diagnostico}</div>` : ""}
-    ${rx.recomendaciones ? `<div class="doc-section"><span style="font-weight:600;color:#374151">Recomendaciones: </span>${rx.recomendaciones}</div>` : ""}
-    ${orden.notas ? `<div class="doc-section"><span style="font-weight:600;color:#374151">Observaciones: </span>${orden.notas}</div>` : ""}
-    <div class="doc-section">
-      <div class="firma-row">
-        <div class="firma-box"><div class="line"></div><p>Responsable óptica</p></div>
-        <div class="firma-box"><div class="line"></div><p>Recibido por (lab)</p></div>
-        <div class="firma-box"><div class="line"></div><p>Fecha de entrega</p></div>
-      </div>
-    </div>
   </div>
-  ${getMarcaFooter(logo)}
   ${forPrint ? "<script>window.print();window.onafterprint=()=>window.close();</script>" : ""}
   </body></html>`
 }
