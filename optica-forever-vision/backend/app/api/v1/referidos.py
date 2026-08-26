@@ -12,7 +12,11 @@ from app.models.user import User
 
 router = APIRouter(prefix="/referidos", tags=["referidos"])
 
-TIPOS_VALIDOS = {"referido", "origen", "luna_material", "luna_indice", "luna_tratamiento"}
+TIPOS_VALIDOS = {
+    "referido", "origen",
+    "luna_material", "luna_indice", "luna_tratamiento",
+    "rx_material", "rx_tratamiento", "rx_diseno",
+}
 TIPOS_CASCADA_PACIENTE = {"referido", "origen"}
 
 

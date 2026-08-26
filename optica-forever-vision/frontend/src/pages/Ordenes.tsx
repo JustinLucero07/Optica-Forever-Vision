@@ -118,23 +118,6 @@ const TIPOS_ORDEN = [
 
 const PARTES_NOMBRES = ["Completo", "OD (ojo derecho)", "OI (ojo izquierdo)", "Ambos ojos", "Armazón", "Lentes de contacto", "Reparación", "Otro"]
 
-const MATERIALES = [
-  "Orgánico 1.50", "Orgánico 1.56", "Orgánico 1.60", "Orgánico 1.67", "Orgánico 1.74",
-  "Policarbonato", "Trivex", "Cristal", "Otro",
-]
-
-const TRATAMIENTOS = [
-  "Sin tratamiento", "Antireflejo", "Antireflejo + UV", "Antireflejo + UV + Endurecido",
-  "Fotocromático", "Fotocromático + Antireflejo", "Filtro azul", "Filtro azul + Antireflejo",
-  "AR + Filtro azul", "Espejado",
-]
-
-const DISENOS = [
-  "Monofocal", "Bifocal plano", "Bifocal redondo",
-  "Progresivo económico", "Progresivo premium", "Progresivo personalizado",
-  "Lente contacto suave", "Lente contacto rígido", "Ocupacional", "Otro",
-]
-
 const EMPTY_FORM = {
   paciente_id: "",
   tipo: "Lentes monofocales",
@@ -672,24 +655,41 @@ export default function Ordenes() {
     queryFn: () => api.get("/referidos", { params: { tipo: "luna_tratamiento", activo: true } }).then(r => r.data),
     staleTime: 300_000,
   })
+  const { data: materialesRx = [] } = useQuery<OpcionLuna[]>({
+    queryKey: ["rx-materiales"],
+    queryFn: () => api.get("/referidos", { params: { tipo: "rx_material", activo: true } }).then(r => r.data),
+    staleTime: 300_000,
+  })
+  const { data: tratamientosRx = [] } = useQuery<OpcionLuna[]>({
+    queryKey: ["rx-tratamientos"],
+    queryFn: () => api.get("/referidos", { params: { tipo: "rx_tratamiento", activo: true } }).then(r => r.data),
+    staleTime: 300_000,
+  })
+  const { data: disenosRx = [] } = useQuery<OpcionLuna[]>({
+    queryKey: ["rx-disenos"],
+    queryFn: () => api.get("/referidos", { params: { tipo: "rx_diseno", activo: true } }).then(r => r.data),
+    staleTime: 300_000,
+  })
 
-  const [dialogNuevaOpcion, setDialogNuevaOpcion] = useState<null | "luna_material" | "luna_indice" | "luna_tratamiento">(null)
+  type TipoOpcion = "luna_material" | "luna_indice" | "luna_tratamiento" | "rx_material" | "rx_tratamiento" | "rx_diseno"
+  const [dialogNuevaOpcion, setDialogNuevaOpcion] = useState<null | TipoOpcion>(null)
   const [nuevaOpcionNombre, setNuevaOpcionNombre] = useState("")
 
   const crearOpcionLunaMut = useMutation({
-    mutationFn: ({ nombre, tipo }: { nombre: string; tipo: string }) => api.post("/referidos", { nombre, tipo }),
+    mutationFn: ({ nombre, tipo }: { nombre: string; tipo: TipoOpcion }) => api.post("/referidos", { nombre, tipo }),
     onSuccess: (res, { tipo }) => {
       const nombre = res.data.nombre
-      if (tipo === "luna_material") {
-        qc.invalidateQueries({ queryKey: ["luna-materiales"] })
-        setLunaEspecs(s => ({ ...s, material: nombre }))
-      } else if (tipo === "luna_indice") {
-        qc.invalidateQueries({ queryKey: ["luna-indices"] })
-        setLunaEspecs(s => ({ ...s, indice: nombre }))
-      } else {
-        qc.invalidateQueries({ queryKey: ["luna-tratamientos"] })
-        setLunaEspecs(s => ({ ...s, tratamientos: s.tratamientos.includes(nombre) ? s.tratamientos : [...s.tratamientos, nombre] }))
+      const invalidateMap: Record<TipoOpcion, string> = {
+        luna_material: "luna-materiales", luna_indice: "luna-indices", luna_tratamiento: "luna-tratamientos",
+        rx_material: "rx-materiales", rx_tratamiento: "rx-tratamientos", rx_diseno: "rx-disenos",
       }
+      qc.invalidateQueries({ queryKey: [invalidateMap[tipo]] })
+      if (tipo === "luna_material") setLunaEspecs(s => ({ ...s, material: nombre }))
+      else if (tipo === "luna_indice") setLunaEspecs(s => ({ ...s, indice: nombre }))
+      else if (tipo === "luna_tratamiento") setLunaEspecs(s => ({ ...s, tratamientos: s.tratamientos.includes(nombre) ? s.tratamientos : [...s.tratamientos, nombre] }))
+      else if (tipo === "rx_material") setRx(r => ({ ...r, material: nombre }))
+      else if (tipo === "rx_tratamiento") setRx(r => ({ ...r, tratamiento: nombre }))
+      else if (tipo === "rx_diseno") setRx(r => ({ ...r, diseno: nombre }))
       setDialogNuevaOpcion(null)
       setNuevaOpcionNombre("")
       toast.success(`"${nombre}" agregado`)
@@ -1493,22 +1493,52 @@ export default function Ordenes() {
                   {[
                     { label: "DP (mm)", content: <Input type="number" step="0.5" min="0" value={rx.dp} onChange={e => setRx(r => ({ ...r, dp: e.target.value }))} placeholder="63" className="text-center" /> },
                     { label: "Material", content: (
-                      <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={rx.material} onChange={e => setRx(r => ({ ...r, material: e.target.value }))}>
-                        <option value="">— Seleccionar —</option>
-                        {MATERIALES.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
+                      <div className="flex gap-1">
+                        <select className="flex-1 border rounded-lg px-3 py-2 text-sm bg-background" value={rx.material} onChange={e => setRx(r => ({ ...r, material: e.target.value }))}>
+                          <option value="">— Seleccionar —</option>
+                          {(rx.material && !materialesRx.some(m => m.nombre === rx.material)
+                            ? [...materialesRx, { id: -1, nombre: rx.material, activo: true }]
+                            : materialesRx
+                          ).map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                        </select>
+                        <button type="button" title="Agregar material nuevo"
+                          onClick={() => { setNuevaOpcionNombre(""); setDialogNuevaOpcion("rx_material") }}
+                          className="h-9 w-9 shrink-0 rounded-lg border border-input bg-background hover:bg-accent flex items-center justify-center">
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
                     )},
                     { label: "Tratamiento", content: (
-                      <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={rx.tratamiento} onChange={e => setRx(r => ({ ...r, tratamiento: e.target.value }))}>
-                        <option value="">— Seleccionar —</option>
-                        {TRATAMIENTOS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
+                      <div className="flex gap-1">
+                        <select className="flex-1 border rounded-lg px-3 py-2 text-sm bg-background" value={rx.tratamiento} onChange={e => setRx(r => ({ ...r, tratamiento: e.target.value }))}>
+                          <option value="">— Seleccionar —</option>
+                          {(rx.tratamiento && !tratamientosRx.some(t => t.nombre === rx.tratamiento)
+                            ? [...tratamientosRx, { id: -1, nombre: rx.tratamiento, activo: true }]
+                            : tratamientosRx
+                          ).map(t => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
+                        </select>
+                        <button type="button" title="Agregar tratamiento nuevo"
+                          onClick={() => { setNuevaOpcionNombre(""); setDialogNuevaOpcion("rx_tratamiento") }}
+                          className="h-9 w-9 shrink-0 rounded-lg border border-input bg-background hover:bg-accent flex items-center justify-center">
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
                     )},
                     { label: "Diseño", content: (
-                      <select className="w-full border rounded-lg px-3 py-2 text-sm bg-background" value={rx.diseno} onChange={e => setRx(r => ({ ...r, diseno: e.target.value }))}>
-                        <option value="">— Seleccionar —</option>
-                        {DISENOS.map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
+                      <div className="flex gap-1">
+                        <select className="flex-1 border rounded-lg px-3 py-2 text-sm bg-background" value={rx.diseno} onChange={e => setRx(r => ({ ...r, diseno: e.target.value }))}>
+                          <option value="">— Seleccionar —</option>
+                          {(rx.diseno && !disenosRx.some(d => d.nombre === rx.diseno)
+                            ? [...disenosRx, { id: -1, nombre: rx.diseno, activo: true }]
+                            : disenosRx
+                          ).map(d => <option key={d.id} value={d.nombre}>{d.nombre}</option>)}
+                        </select>
+                        <button type="button" title="Agregar diseño nuevo"
+                          onClick={() => { setNuevaOpcionNombre(""); setDialogNuevaOpcion("rx_diseno") }}
+                          className="h-9 w-9 shrink-0 rounded-lg border border-input bg-background hover:bg-accent flex items-center justify-center">
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
                     )},
                   ].map(({ label, content }) => (
                     <div key={label}>
@@ -1928,12 +1958,17 @@ export default function Ordenes() {
         </form>
       </Dialog>
 
-      {/* Nueva opción de lunas (material / índice / tratamiento) */}
+      {/* Nueva opción (materiales / índices / tratamientos / diseños) */}
       <Dialog open={!!dialogNuevaOpcion} onClose={() => setDialogNuevaOpcion(null)} className="max-w-sm">
         <DialogHeader onClose={() => setDialogNuevaOpcion(null)}>
-          {dialogNuevaOpcion === "luna_material" ? "Nuevo material"
-            : dialogNuevaOpcion === "luna_indice" ? "Nuevo índice"
-            : "Nuevo tratamiento"}
+          {({
+            luna_material: "Nuevo material",
+            luna_indice: "Nuevo índice",
+            luna_tratamiento: "Nuevo tratamiento",
+            rx_material: "Nuevo material",
+            rx_tratamiento: "Nuevo tratamiento",
+            rx_diseno: "Nuevo diseño",
+          } as Record<string, string>)[dialogNuevaOpcion ?? ""] ?? "Nueva opción"}
         </DialogHeader>
         <form onSubmit={e => {
           e.preventDefault()
