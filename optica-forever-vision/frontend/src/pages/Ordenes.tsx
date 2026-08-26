@@ -317,7 +317,7 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
   <style>
     ${PDF_BASE_CSS}
     @page{size:A4;margin:9mm}
-    body{max-width:110mm!important;padding:0!important;font-size:10.5px!important;margin:0!important}
+    body{max-width:165mm!important;padding:0!important;font-size:10.5px!important;margin:0!important}
     .doc-hdr{margin-bottom:8px!important}
     .doc-hdr-title{font-size:9.5px!important}
     .doc-body{gap:6px!important}
