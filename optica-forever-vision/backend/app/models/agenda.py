@@ -70,11 +70,17 @@ class OrdenTrabajo(Base):
     armazon_ref: Mapped[str | None] = mapped_column(String(150), nullable=True)
     armazon_color: Mapped[str | None] = mapped_column(String(80), nullable=True)
     armazon_talla: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    armazon_producto_id: Mapped[int | None] = mapped_column(
+        ForeignKey("productos.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     luna_material: Mapped[str | None] = mapped_column(String(80), nullable=True)
     luna_tratamientos: Mapped[str | None] = mapped_column(String(250), nullable=True)
     luna_color: Mapped[str | None] = mapped_column(String(80), nullable=True)
     luna_indice: Mapped[str | None] = mapped_column(String(20), nullable=True)
     luna_diametro: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    luna_producto_id: Mapped[int | None] = mapped_column(
+        ForeignKey("productos.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     es_proforma: Mapped[bool] = mapped_column(default=False, nullable=False)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

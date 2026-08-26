@@ -64,7 +64,7 @@ interface ConsultaItem {
   recetas: RecetaItem[]
 }
 
-interface ProductoMin { id: number; nombre: string; precio_costo: number | null; precio_venta: number | null; stock_actual: number | null }
+interface ProductoMin { id: number; nombre: string; codigo: string | null; precio_costo: number | null; precio_venta: number | null; stock_actual: number | null }
 
 interface RxOjo { esf: string; cil: string; eje: string; add: string; prisma: string; dnp: string }
 const EMPTY_RX_OJO: RxOjo = { esf: "", cil: "", eje: "", add: "", prisma: "", dnp: "" }
@@ -203,6 +203,69 @@ function EstadoDropdownPortal({ anchorEl, open, onClose, estados, current, onSel
   )
 }
 
+function ProductoPicker({
+  productos, value, onSelect, onCrearNuevo, placeholder = "Buscar por código o nombre…",
+}: {
+  productos: ProductoMin[]
+  value: string
+  onSelect: (p: ProductoMin) => void
+  onCrearNuevo: (nombre: string) => void
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const selected = value ? productos.find(p => p.id === Number(value)) : null
+  const filtered = (search
+    ? productos.filter(p => p.nombre.toLowerCase().includes(search.toLowerCase()) || (p.codigo ?? "").toLowerCase().includes(search.toLowerCase()))
+    : productos
+  ).slice(0, 30)
+
+  return (
+    <div className="relative">
+      <div
+        onClick={() => setOpen(o => !o)}
+        className="border border-input rounded-lg px-3 py-2 text-sm bg-background cursor-pointer flex items-center justify-between gap-2 mt-1"
+      >
+        {selected ? (
+          <span className="truncate">{selected.nombre}{selected.codigo ? ` [${selected.codigo}]` : ""}</span>
+        ) : (
+          <span className="text-muted-foreground truncate">{placeholder}</span>
+        )}
+        <span className="text-muted-foreground shrink-0">▾</span>
+      </div>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute z-50 top-full left-0 right-0 mt-1 border border-border rounded-lg shadow-xl bg-card max-h-64 overflow-y-auto">
+            <div className="p-2 border-b sticky top-0 bg-card">
+              <Input autoFocus placeholder="Código o nombre…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 text-sm" />
+            </div>
+            {filtered.map(p => (
+              <button
+                key={p.id} type="button"
+                onClick={() => { onSelect(p); setOpen(false); setSearch("") }}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors flex items-center justify-between gap-2"
+              >
+                <span className="truncate">{p.nombre}{p.codigo ? ` [${p.codigo}]` : ""}</span>
+                <span className="text-muted-foreground shrink-0">${(p.precio_venta ?? 0).toFixed(2)}</span>
+              </button>
+            ))}
+            {filtered.length === 0 && <p className="px-3 py-3 text-xs text-muted-foreground text-center">Sin resultados</p>}
+            {search.trim() && (
+              <button
+                type="button"
+                onClick={() => { onCrearNuevo(search.trim()); setOpen(false); setSearch("") }}
+                className="w-full text-left px-3 py-1.5 text-sm text-primary hover:bg-accent transition-colors border-t"
+              >
+                + Crear producto "{search.trim()}"
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 function rxToDesc(rx: RxForm): string {
   const fmtOjo = (label: string, o: RxOjo) => {
@@ -253,10 +316,18 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
   <title>Orden ${orden.numero}</title>
   <style>
     ${PDF_BASE_CSS}
+    @page{size:A5;margin:9mm}
+    body{max-width:100%!important;padding:0!important;font-size:10.5px!important}
+    .doc-hdr{margin-bottom:8px!important}
+    .doc-hdr-title{font-size:9.5px!important}
+    .doc-body{gap:6px!important}
+    .doc-section{margin-bottom:6px!important}
+    .doc-section-title{font-size:9px!important;margin-bottom:5px!important;padding-bottom:3px!important}
+    table.rx th,table.rx td{padding:3px 4px!important;font-size:10px!important}
     .extras{display:flex;border:1px solid #e5e7eb;border-top:none}
-    .extras>div{flex:1;padding:8px 12px;border-right:1px solid #e5e7eb;font-size:11px}
+    .extras>div{flex:1;padding:5px 8px;border-right:1px solid #e5e7eb;font-size:10px}
     .extras>div:last-child{border-right:none}
-    .extras .l{color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:2px}
+    .extras .l{color:#6b7280;font-size:9px;font-weight:700;text-transform:uppercase;margin-bottom:1px}
   </style></head><body>
   <div class="doc-hdr">
     <div class="doc-hdr-left">
@@ -270,7 +341,7 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
   </div>
   <div class="doc-body">
     <div class="doc-section">
-      <div class="doc-grid" style="grid-template-columns:130px 1fr 130px 1fr">
+      <div class="doc-grid" style="grid-template-columns:80px 1fr 80px 1fr">
         <span class="lbl">Paciente</span><span class="val"><strong>${pacNombre}</strong></span>
         <span class="lbl">Laboratorio</span><span class="val"><strong>${orden.lab_proveedor}</strong></span>
         <span class="lbl">Tipo</span><span class="val">${orden.tipo}</span>
@@ -281,7 +352,7 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
       <div class="doc-section-title">Prescripción</div>
       <table class="rx">
         <thead><tr>
-          <th style="width:44px"></th>
+          <th style="width:32px"></th>
           <th>ESF</th><th>CYL</th><th>EJE</th><th>ADD</th>
           <th>PRISMA</th><th>DNP</th><th>DP</th>
         </tr></thead>
@@ -304,24 +375,14 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
       <div><div class="l">Tratamiento</div>${rx.tratamiento || "—"}</div>
       <div><div class="l">Material</div>${rx.material || "—"}</div>
     </div>
-    ${rx.diagnostico ? `<div class="doc-section"><span style="font-weight:600;color:#374151">Diagnóstico: </span>${rx.diagnostico}</div>` : ""}
-    ${rx.recomendaciones ? `<div class="doc-section"><span style="font-weight:600;color:#374151">Recomendaciones: </span>${rx.recomendaciones}</div>` : ""}
-    ${orden.notas ? `<div class="doc-section"><span style="font-weight:600;color:#374151">Observaciones: </span>${orden.notas}</div>` : ""}
-    <div class="doc-section">
-      <div class="firma-row">
-        <div class="firma-box"><div class="line"></div><p>Responsable óptica</p></div>
-        <div class="firma-box"><div class="line"></div><p>Recibido por (lab)</p></div>
-        <div class="firma-box"><div class="line"></div><p>Fecha de entrega</p></div>
-      </div>
-    </div>
+    ${rx.diagnostico ? `<div class="doc-section" style="margin-top:6px"><span style="font-weight:600;color:#374151">Diagnóstico: </span>${rx.diagnostico}</div>` : ""}
   </div>
-  ${getMarcaFooter(logo)}
   ${forPrint ? "<script>window.print();window.onafterprint=()=>window.close();</script>" : ""}
   </body></html>`
 }
 
 function printOrden(orden: Orden, pacNombre: string, logo?: string | null) {
-  openPrintWindow(buildOrdenHtml(orden, pacNombre, logo, true), 820, 900)
+  openPrintWindow(buildOrdenHtml(orden, pacNombre, logo, true), 460, 620)
 }
 
 // ─── PDF: Etiqueta de lente ───────────────────────────────────────────────────
@@ -542,6 +603,8 @@ export default function Ordenes() {
   }
   const EMPTY_LUNA_ESPECS = { material: "", indice: "", tratamientos: [] as string[], color: "", diametro: "" }
   const [lunaEspecs, setLunaEspecs] = useState({ ...EMPTY_LUNA_ESPECS })
+  const [armazonProductoId, setArmazonProductoId] = useState("")
+  const [lunaProductoId, setLunaProductoId] = useState("")
   const [saving, setSaving] = useState(false)
   const [estadoDropdown, setEstadoDropdown] = useState<number | null>(null)
   const estadoAnchorRef = useRef<HTMLElement | null>(null)
@@ -585,6 +648,35 @@ export default function Ordenes() {
     queryKey: ["productos-mini"],
     queryFn: () => api.get("/productos", { params: { limit: 5000 } }).then(r => r.data),
     staleTime: 120_000,
+  })
+
+  const { data: categorias = [] } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ["categorias"],
+    queryFn: () => api.get("/categorias").then(r => r.data),
+    staleTime: 300_000,
+  })
+
+  const crearProductoMut = useMutation({
+    mutationFn: ({ nombre, tipo }: { nombre: string; tipo: "armazon" | "luna" }) => {
+      const catNombre = tipo === "luna" ? "lunas" : "armazones"
+      const cat = categorias.find(c => c.nombre.toLowerCase() === catNombre)
+      return api.post("/productos", {
+        nombre, categoria_id: cat?.id ?? null, precio_costo: 0, precio_venta: 0, stock_actual: 0, stock_minimo: 0, unidad: "unidad",
+      }).then(r => ({ producto: r.data as ProductoMin, tipo }))
+    },
+    onSuccess: ({ producto, tipo }) => {
+      qc.invalidateQueries({ queryKey: ["productos-mini"] })
+      if (tipo === "armazon") {
+        setArmazonProductoId(String(producto.id))
+        setForm(f => ({ ...f, armazon_ref: producto.nombre }))
+        setPrecioItem("arm", "monto", (producto.precio_venta ?? 0).toFixed(2))
+      } else {
+        setLunaProductoId(String(producto.id))
+        setPrecioItem("lun", "monto", (producto.precio_venta ?? 0).toFixed(2))
+      }
+      toast.success(`Producto "${producto.nombre}" creado`)
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al crear producto")),
   })
 
   const estadoMut = useMutation({
@@ -698,11 +790,15 @@ export default function Ordenes() {
       { id: "lun", descripcion: "Lunas", monto: "" },
     ])
     setLunaEspecs({ ...EMPTY_LUNA_ESPECS })
+    setArmazonProductoId("")
+    setLunaProductoId("")
     setOpenForm(true)
   }
 
   function openEdit(o: Orden) {
     setEditOrden(o)
+    setArmazonProductoId((o as any).armazon_producto_id ? String((o as any).armazon_producto_id) : "")
+    setLunaProductoId((o as any).luna_producto_id ? String((o as any).luna_producto_id) : "")
     setRx(descToRx(o.descripcion))
     setForm({
       paciente_id: o.paciente_id.toString(),
@@ -805,6 +901,7 @@ export default function Ordenes() {
         armazon_ref: form.armazon_ref || null,
         armazon_color: form.armazon_color || null,
         armazon_talla: form.armazon_talla || null,
+        armazon_producto_id: armazonProductoId ? Number(armazonProductoId) : null,
         precio_armazon: pArmazon,
         precio_lunas: pLunas,
         precio_venta: pVentaCalc,
@@ -814,6 +911,7 @@ export default function Ordenes() {
         luna_tratamientos: lunaEspecs.tratamientos.length ? lunaEspecs.tratamientos.join(", ") : null,
         luna_color: lunaEspecs.color || null,
         luna_diametro: lunaEspecs.diametro || null,
+        luna_producto_id: lunaProductoId ? Number(lunaProductoId) : null,
       }
       if (editOrden) {
         const parte = partes[0]
@@ -1407,6 +1505,20 @@ export default function Ordenes() {
                     </div>
                     <div className="space-y-2.5">
                       <div>
+                        <label className="text-xs text-muted-foreground">Producto del inventario</label>
+                        <ProductoPicker
+                          productos={productosMini}
+                          value={armazonProductoId}
+                          placeholder="Buscar armazón por código o nombre…"
+                          onSelect={p => {
+                            setArmazonProductoId(String(p.id))
+                            setForm(f => ({ ...f, armazon_ref: p.nombre }))
+                            setPrecioItem("arm", "monto", (p.precio_venta ?? 0).toFixed(2))
+                          }}
+                          onCrearNuevo={nombre => crearProductoMut.mutate({ nombre, tipo: "armazon" })}
+                        />
+                      </div>
+                      <div>
                         <label className="text-xs text-muted-foreground">Referencia / Modelo</label>
                         <Input placeholder="Ej: Ray-Ban RB3025" value={form.armazon_ref} onChange={e => setForm(f => ({ ...f, armazon_ref: e.target.value }))} className="mt-1" />
                       </div>
@@ -1428,6 +1540,19 @@ export default function Ordenes() {
                     <div className="flex items-center gap-2">
                       <Eye className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                       <span className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">Especificaciones de lunas</span>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Producto del inventario</label>
+                      <ProductoPicker
+                        productos={productosMini}
+                        value={lunaProductoId}
+                        placeholder="Buscar luna por código o nombre…"
+                        onSelect={p => {
+                          setLunaProductoId(String(p.id))
+                          setPrecioItem("lun", "monto", (p.precio_venta ?? 0).toFixed(2))
+                        }}
+                        onCrearNuevo={nombre => crearProductoMut.mutate({ nombre, tipo: "luna" })}
+                      />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>

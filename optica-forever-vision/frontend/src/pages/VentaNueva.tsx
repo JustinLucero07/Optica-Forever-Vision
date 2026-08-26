@@ -37,7 +37,7 @@ export default function VentaNueva() {
         const items: CartItem[] = []
         if (armazon > 0) {
           items.push({
-            producto_id: null,
+            producto_id: ordenInicial.armazon_producto_id ?? null,
             descripcion: ordenInicial.armazon_ref
               ? `Armazón ${ordenInicial.armazon_ref}`
               : "Armazón",
@@ -49,7 +49,7 @@ export default function VentaNueva() {
         }
         if (lunas > 0) {
           items.push({
-            producto_id: null,
+            producto_id: ordenInicial.luna_producto_id ?? null,
             descripcion: `Lunas ${ordenInicial.tipo ?? ""}`.trim(),
             cantidad: 1,
             precio_unitario: lunas,
@@ -171,15 +171,43 @@ export default function VentaNueva() {
   )
 
   function cargarDesdeOrden(o: any) {
-    const desc = o.tipo ?? "Orden de laboratorio"
-    setCart(prev => [...prev, {
-      producto_id: null,
-      descripcion: desc,
-      cantidad: 1,
-      precio_unitario: Number(o.precio_venta ?? 0),
-      descuento_pct: 0,
-      garantia_meses: null,
-    }])
+    const armazon = Number(o.precio_armazon ?? 0)
+    const lunas = Number(o.precio_lunas ?? 0)
+    const nuevos: CartItem[] = []
+    if (armazon > 0 || lunas > 0) {
+      if (armazon > 0) {
+        nuevos.push({
+          producto_id: o.armazon_producto_id ?? null,
+          descripcion: o.armazon_ref ? `Armazón ${o.armazon_ref}` : "Armazón",
+          cantidad: 1, precio_unitario: armazon, descuento_pct: 0, garantia_meses: null,
+        })
+      }
+      if (lunas > 0) {
+        nuevos.push({
+          producto_id: o.luna_producto_id ?? null,
+          descripcion: `Lunas ${o.tipo ?? ""}`.trim(),
+          cantidad: 1, precio_unitario: lunas, descuento_pct: 0, garantia_meses: null,
+        })
+      }
+      const total = Number(o.precio_venta ?? 0)
+      const resto = total - armazon - lunas
+      if (resto > 0.01) {
+        nuevos.push({
+          producto_id: null, descripcion: "Otros servicios",
+          cantidad: 1, precio_unitario: resto, descuento_pct: 0, garantia_meses: null,
+        })
+      }
+    } else {
+      nuevos.push({
+        producto_id: null,
+        descripcion: o.tipo ?? "Orden de laboratorio",
+        cantidad: 1,
+        precio_unitario: Number(o.precio_venta ?? 0),
+        descuento_pct: 0,
+        garantia_meses: null,
+      })
+    }
+    setCart(prev => [...prev, ...nuevos])
     if (!pacienteId && o.paciente_id) setPacienteId(String(o.paciente_id))
     if (!notas) setNotas(`Orden ${o.numero} — ${o.tipo}`)
     setLinkedOrdenId(o.id)

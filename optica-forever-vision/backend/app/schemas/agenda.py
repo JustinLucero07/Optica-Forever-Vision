@@ -84,11 +84,13 @@ class OrdenCreate(BaseModel):
     armazon_ref: str | None = None
     armazon_color: str | None = None
     armazon_talla: str | None = None
+    armazon_producto_id: int | None = None
     luna_material: str | None = None
     luna_tratamientos: str | None = None
     luna_color: str | None = None
     luna_indice: str | None = None
     luna_diametro: str | None = None
+    luna_producto_id: int | None = None
     es_proforma: bool = False
     notas: str | None = None
     producto_id: int | None = None  # para descuento de stock cuando fuente=stock
@@ -110,11 +112,13 @@ class OrdenUpdate(BaseModel):
     armazon_ref: str | None = None
     armazon_color: str | None = None
     armazon_talla: str | None = None
+    armazon_producto_id: int | None = None
     luna_material: str | None = None
     luna_tratamientos: str | None = None
     luna_color: str | None = None
     luna_indice: str | None = None
     luna_diametro: str | None = None
+    luna_producto_id: int | None = None
     es_proforma: bool | None = None
     venta_id: int | None = None
     notas: str | None = None
@@ -144,11 +148,13 @@ class OrdenOut(BaseModel):
     armazon_ref: str | None = None
     armazon_color: str | None = None
     armazon_talla: str | None = None
+    armazon_producto_id: int | None = None
     luna_material: str | None = None
     luna_tratamientos: str | None = None
     luna_color: str | None = None
     luna_indice: str | None = None
     luna_diametro: str | None = None
+    luna_producto_id: int | None = None
     es_proforma: bool = False
     notas: str | None
     created_at: datetime
