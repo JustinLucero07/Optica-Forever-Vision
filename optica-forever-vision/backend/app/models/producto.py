@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -21,9 +21,15 @@ class Categoria(Base):
 
 class Producto(Base):
     __tablename__ = "productos"
+    __table_args__ = (
+        Index(
+            "ix_productos_codigo_activo_uniq", "codigo",
+            unique=True, postgresql_where=text("activo = true AND codigo IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
+    codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     nombre: Mapped[str] = mapped_column(String(200), nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     categoria_id: Mapped[int | None] = mapped_column(
