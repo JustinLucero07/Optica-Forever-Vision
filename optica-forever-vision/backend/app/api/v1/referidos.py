@@ -12,7 +12,8 @@ from app.models.user import User
 
 router = APIRouter(prefix="/referidos", tags=["referidos"])
 
-TIPOS_VALIDOS = {"referido", "origen"}
+TIPOS_VALIDOS = {"referido", "origen", "luna_material", "luna_indice", "luna_tratamiento"}
+TIPOS_CASCADA_PACIENTE = {"referido", "origen"}
 
 
 class ReferidoIn(BaseModel):
@@ -90,7 +91,7 @@ def actualizar(
     ref.nombre = nombre_nuevo
     ref.activo = data.activo
     # Propaga el renombre a los pacientes que ya usaban el nombre anterior
-    if nombre_anterior != nombre_nuevo:
+    if nombre_anterior != nombre_nuevo and ref.tipo in TIPOS_CASCADA_PACIENTE:
         columna = Paciente.origen if ref.tipo == "origen" else Paciente.referido_por
         db.execute(
             Paciente.__table__.update()

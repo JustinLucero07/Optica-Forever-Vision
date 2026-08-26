@@ -10,7 +10,7 @@ import { enviarOrdenLista } from "@/lib/whatsapp"
 import { api } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogBody } from "@/components/ui/dialog"
+import { Dialog, DialogBody, DialogHeader, DialogFooter } from "@/components/ui/dialog"
 import { getMarcaFooter, PDF_BASE_CSS, openPrintWindow, getMarcaLogo, downloadHtmlAsPdf } from "@/lib/pdf"
 import { parsePrescripcion } from "@/lib/rx"
 import { errMsg } from "@/lib/errors"
@@ -316,7 +316,7 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
   <title>Orden ${orden.numero}</title>
   <style>
     ${PDF_BASE_CSS}
-    @page{size:A5;margin:9mm}
+    @page{size:A4;margin:9mm}
     body{max-width:100%!important;padding:0!important;font-size:10.5px!important}
     .doc-hdr{margin-bottom:8px!important}
     .doc-hdr-title{font-size:9.5px!important}
@@ -376,13 +376,23 @@ function buildOrdenHtml(orden: Orden, pacNombre: string, logo?: string | null, f
       <div><div class="l">Material</div>${rx.material || "—"}</div>
     </div>
     ${rx.diagnostico ? `<div class="doc-section" style="margin-top:6px"><span style="font-weight:600;color:#374151">Diagnóstico: </span>${rx.diagnostico}</div>` : ""}
+    ${rx.recomendaciones ? `<div class="doc-section"><span style="font-weight:600;color:#374151">Recomendaciones: </span>${rx.recomendaciones}</div>` : ""}
+    ${orden.notas ? `<div class="doc-section"><span style="font-weight:600;color:#374151">Observaciones: </span>${orden.notas}</div>` : ""}
+    <div class="doc-section">
+      <div class="firma-row">
+        <div class="firma-box"><div class="line"></div><p>Responsable óptica</p></div>
+        <div class="firma-box"><div class="line"></div><p>Recibido por (lab)</p></div>
+        <div class="firma-box"><div class="line"></div><p>Fecha de entrega</p></div>
+      </div>
+    </div>
   </div>
+  ${getMarcaFooter(logo)}
   ${forPrint ? "<script>window.print();window.onafterprint=()=>window.close();</script>" : ""}
   </body></html>`
 }
 
 function printOrden(orden: Orden, pacNombre: string, logo?: string | null) {
-  openPrintWindow(buildOrdenHtml(orden, pacNombre, logo, true), 460, 620)
+  openPrintWindow(buildOrdenHtml(orden, pacNombre, logo, true), 820, 900)
 }
 
 // ─── PDF: Etiqueta de lente ───────────────────────────────────────────────────
@@ -654,6 +664,47 @@ export default function Ordenes() {
     queryKey: ["categorias"],
     queryFn: () => api.get("/categorias").then(r => r.data),
     staleTime: 300_000,
+  })
+
+  interface OpcionLuna { id: number; nombre: string; activo: boolean }
+  const { data: materialesLuna = [] } = useQuery<OpcionLuna[]>({
+    queryKey: ["luna-materiales"],
+    queryFn: () => api.get("/referidos", { params: { tipo: "luna_material", activo: true } }).then(r => r.data),
+    staleTime: 300_000,
+  })
+  const { data: indicesLuna = [] } = useQuery<OpcionLuna[]>({
+    queryKey: ["luna-indices"],
+    queryFn: () => api.get("/referidos", { params: { tipo: "luna_indice", activo: true } }).then(r => r.data),
+    staleTime: 300_000,
+  })
+  const { data: tratamientosLuna = [] } = useQuery<OpcionLuna[]>({
+    queryKey: ["luna-tratamientos"],
+    queryFn: () => api.get("/referidos", { params: { tipo: "luna_tratamiento", activo: true } }).then(r => r.data),
+    staleTime: 300_000,
+  })
+
+  const [dialogNuevaOpcion, setDialogNuevaOpcion] = useState<null | "luna_material" | "luna_indice" | "luna_tratamiento">(null)
+  const [nuevaOpcionNombre, setNuevaOpcionNombre] = useState("")
+
+  const crearOpcionLunaMut = useMutation({
+    mutationFn: ({ nombre, tipo }: { nombre: string; tipo: string }) => api.post("/referidos", { nombre, tipo }),
+    onSuccess: (res, { tipo }) => {
+      const nombre = res.data.nombre
+      if (tipo === "luna_material") {
+        qc.invalidateQueries({ queryKey: ["luna-materiales"] })
+        setLunaEspecs(s => ({ ...s, material: nombre }))
+      } else if (tipo === "luna_indice") {
+        qc.invalidateQueries({ queryKey: ["luna-indices"] })
+        setLunaEspecs(s => ({ ...s, indice: nombre }))
+      } else {
+        qc.invalidateQueries({ queryKey: ["luna-tratamientos"] })
+        setLunaEspecs(s => ({ ...s, tratamientos: s.tratamientos.includes(nombre) ? s.tratamientos : [...s.tratamientos, nombre] }))
+      }
+      setDialogNuevaOpcion(null)
+      setNuevaOpcionNombre("")
+      toast.success(`"${nombre}" agregado`)
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al agregar opción")),
   })
 
   const crearProductoMut = useMutation({
@@ -1557,35 +1608,49 @@ export default function Ordenes() {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-muted-foreground">Material</label>
-                        <select value={lunaEspecs.material} onChange={e => setLunaEspecs(s => ({ ...s, material: e.target.value }))}
-                          className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm mt-1">
-                          <option value="">— seleccionar —</option>
-                          <option>CR-39 (Orgánico)</option>
-                          <option>Policarbonato</option>
-                          <option>Trivex</option>
-                          <option>Alto índice 1.60</option>
-                          <option>Alto índice 1.67</option>
-                          <option>Alto índice 1.74</option>
-                          <option>Mineral (vidrio)</option>
-                        </select>
+                        <div className="flex gap-1 mt-1">
+                          <select value={lunaEspecs.material} onChange={e => setLunaEspecs(s => ({ ...s, material: e.target.value }))}
+                            className="flex-1 h-9 rounded-lg border border-input bg-background px-3 text-sm">
+                            <option value="">— seleccionar —</option>
+                            {(lunaEspecs.material && !materialesLuna.some(m => m.nombre === lunaEspecs.material)
+                              ? [...materialesLuna, { id: -1, nombre: lunaEspecs.material, activo: true }]
+                              : materialesLuna
+                            ).map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                          </select>
+                          <button type="button" title="Agregar material nuevo"
+                            onClick={() => { setNuevaOpcionNombre(""); setDialogNuevaOpcion("luna_material") }}
+                            className="h-9 w-9 shrink-0 rounded-lg border border-input bg-background hover:bg-accent flex items-center justify-center">
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                       <div>
                         <label className="text-xs text-muted-foreground">Índice</label>
-                        <select value={lunaEspecs.indice} onChange={e => setLunaEspecs(s => ({ ...s, indice: e.target.value }))}
-                          className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm mt-1">
-                          <option value="">— seleccionar —</option>
-                          <option>1.50</option><option>1.53</option><option>1.56</option>
-                          <option>1.60</option><option>1.67</option><option>1.74</option>
-                        </select>
+                        <div className="flex gap-1 mt-1">
+                          <select value={lunaEspecs.indice} onChange={e => setLunaEspecs(s => ({ ...s, indice: e.target.value }))}
+                            className="flex-1 h-9 rounded-lg border border-input bg-background px-3 text-sm">
+                            <option value="">— seleccionar —</option>
+                            {(lunaEspecs.indice && !indicesLuna.some(m => m.nombre === lunaEspecs.indice)
+                              ? [...indicesLuna, { id: -1, nombre: lunaEspecs.indice, activo: true }]
+                              : indicesLuna
+                            ).map(m => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                          </select>
+                          <button type="button" title="Agregar índice nuevo"
+                            onClick={() => { setNuevaOpcionNombre(""); setDialogNuevaOpcion("luna_indice") }}
+                            className="h-9 w-9 shrink-0 rounded-lg border border-input bg-background hover:bg-accent flex items-center justify-center">
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground">Tratamientos</label>
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        {["Antirreflejo", "Fotocromático", "Polarizado", "BlueCut", "UV400", "Hidrófobo", "Antirrasguño"].map(trat => {
+                        {tratamientosLuna.map(op => {
+                          const trat = op.nombre
                           const active = lunaEspecs.tratamientos.includes(trat)
                           return (
-                            <button key={trat} type="button"
+                            <button key={op.id} type="button"
                               onClick={() => setLunaEspecs(s => ({
                                 ...s,
                                 tratamientos: active ? s.tratamientos.filter(t => t !== trat) : [...s.tratamientos, trat],
@@ -1596,6 +1661,12 @@ export default function Ordenes() {
                             </button>
                           )
                         })}
+                        <button type="button"
+                          onClick={() => { setNuevaOpcionNombre(""); setDialogNuevaOpcion("luna_tratamiento") }}
+                          className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-cyan-400 text-cyan-600 hover:bg-cyan-50 dark:hover:bg-cyan-950/30 transition-colors"
+                        >
+                          <Plus className="h-3 w-3 inline mr-0.5" /> Nuevo
+                        </button>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
@@ -1864,6 +1935,39 @@ export default function Ordenes() {
               </Button>
             </div>
           </div>
+        </form>
+      </Dialog>
+
+      {/* Nueva opción de lunas (material / índice / tratamiento) */}
+      <Dialog open={!!dialogNuevaOpcion} onClose={() => setDialogNuevaOpcion(null)} className="max-w-sm">
+        <DialogHeader onClose={() => setDialogNuevaOpcion(null)}>
+          {dialogNuevaOpcion === "luna_material" ? "Nuevo material"
+            : dialogNuevaOpcion === "luna_indice" ? "Nuevo índice"
+            : "Nuevo tratamiento"}
+        </DialogHeader>
+        <form onSubmit={e => {
+          e.preventDefault()
+          if (nuevaOpcionNombre.trim() && dialogNuevaOpcion) crearOpcionLunaMut.mutate({ nombre: nuevaOpcionNombre.trim(), tipo: dialogNuevaOpcion })
+        }}>
+          <DialogBody className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Nombre *</label>
+              <Input
+                placeholder={dialogNuevaOpcion === "luna_indice" ? "Ej: 1.71" : "Ej: Nuevo material o tratamiento"}
+                value={nuevaOpcionNombre}
+                onChange={e => setNuevaOpcionNombre(e.target.value)}
+                autoFocus
+                required
+              />
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogNuevaOpcion(null)}>Cancelar</Button>
+            <Button type="submit" disabled={crearOpcionLunaMut.isPending || !nuevaOpcionNombre.trim()}>
+              {crearOpcionLunaMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Agregar y seleccionar
+            </Button>
+          </DialogFooter>
         </form>
       </Dialog>
     </div>
