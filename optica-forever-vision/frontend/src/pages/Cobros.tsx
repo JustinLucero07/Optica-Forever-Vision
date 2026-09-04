@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm, type UseFormRegisterReturn } from "react-hook-form"
 import { toast } from "sonner"
 import { type LucideIcon, Plus, Loader2, TrendingUp, TrendingDown, Wallet, AlertCircle, X, ChevronDown, ChevronUp, Link2, PackagePlus, Trash2, ArrowLeftRight, AlertTriangle, BarChart2, Building2, Pencil, Search } from "lucide-react"
-import { deleteWithUndo } from "@/lib/confirm"
+import { deleteWithUndo, confirmAction } from "@/lib/confirm"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
@@ -245,6 +245,15 @@ export default function Cobros() {
       toast.success(editandoCuenta ? "Cuenta actualizada" : "Cuenta creada")
     },
     onError: (e) => toast.error(errMsg(e, "Error al guardar cuenta")),
+  })
+
+  const eliminarCuentaMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/cuentas-bancarias/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] })
+      toast.success("Cuenta eliminada")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar cuenta")),
   })
 
   function abrirNuevaCuenta() {
@@ -607,10 +616,21 @@ export default function Cobros() {
                     <div className="flex items-center gap-1.5">
                       <Badge variant="outline" className="font-normal text-xs">{c.tipo}</Badge>
                       {rol === "admin" && (
-                        <button onClick={() => abrirEditarCuenta(c)}
-                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
-                          <Pencil className="h-3 w-3" />
-                        </button>
+                        <>
+                          <button onClick={() => abrirEditarCuenta(c)}
+                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={() => confirmAction(
+                              `¿Eliminar la cuenta "${c.nombre}"?`,
+                              () => eliminarCuentaMut.mutate(c.id),
+                              "Eliminar",
+                            )}
+                            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </CardTitle>

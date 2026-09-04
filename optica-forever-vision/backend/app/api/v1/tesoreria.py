@@ -64,6 +64,24 @@ def actualizar_cuenta(
     return cuenta
 
 
+@router.delete("/cuentas-bancarias/{cid}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_cuenta(
+    cid: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    cuenta = db.get(CuentaBancaria, cid)
+    if not cuenta:
+        raise HTTPException(404, detail="Cuenta no encontrada")
+    if float(cuenta.saldo_actual) != 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"La cuenta tiene saldo de {float(cuenta.saldo_actual):.2f} — transfiere el saldo a otra cuenta antes de eliminarla",
+        )
+    cuenta.activa = False
+    db.commit()
+
+
 # ── Cobros ─────────────────────────────────────────────────────────────────────
 
 @router.get("/cobros", response_model=list[CobroOut])
