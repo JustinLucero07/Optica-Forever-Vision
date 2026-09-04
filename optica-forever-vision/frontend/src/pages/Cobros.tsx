@@ -203,6 +203,50 @@ export default function Cobros() {
     onError: (e) => toast.error(errMsg(e, "No se puede eliminar")),
   })
 
+  const [pagandoProveedor, setPagandoProveedor] = useState<string | null>(null)
+  const [pagoTodoMonto, setPagoTodoMonto] = useState("")
+  const [pagoTodoCuentaId, setPagoTodoCuentaId] = useState("")
+  const [pagoTodoMetodo, setPagoTodoMetodo] = useState("efectivo")
+  const [pagoTodoFecha, setPagoTodoFecha] = useState(new Date().toISOString().slice(0, 10))
+
+  const pagarTodoMut = useMutation({
+    mutationFn: async () => {
+      const facturas = cxps
+        .filter(c => c.proveedor === pagandoProveedor && c.estado !== "pagado")
+        .sort((a, b) => a.fecha_emision.localeCompare(b.fecha_emision))
+      let restante = Number(pagoTodoMonto)
+      let pagadas = 0
+      for (const f of facturas) {
+        if (restante <= 0.009) break
+        const pendiente = f.monto_total - f.monto_pagado
+        const monto = Math.min(restante, pendiente)
+        if (monto <= 0.009) continue
+        await api.post(`/cxp/${f.id}/pago`, {
+          monto, cuenta_bancaria_id: Number(pagoTodoCuentaId),
+          fecha: pagoTodoFecha, metodo_pago: pagoTodoMetodo, referencia: null,
+        })
+        restante -= monto
+        pagadas++
+      }
+      return pagadas
+    },
+    onSuccess: (pagadas) => {
+      qc.invalidateQueries({ queryKey: ["cxp"] })
+      qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] })
+      setPagandoProveedor(null)
+      toast.success(`${pagadas} factura(s) pagada(s)`)
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al pagar")),
+  })
+
+  function abrirPagoTodo(proveedor: string, totalPendiente: number) {
+    setPagoTodoMonto(totalPendiente.toFixed(2))
+    setPagoTodoCuentaId(cuentas[0]?.id.toString() ?? "")
+    setPagoTodoMetodo("efectivo")
+    setPagoTodoFecha(hoy)
+    setPagandoProveedor(proveedor)
+  }
+
   const eliminarCobroMut = useMutation({
     mutationFn: (id: number) => api.delete(`/cobros/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cobros"] }); qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] }); toast.success("Cobro eliminado") },
@@ -482,6 +526,41 @@ export default function Cobros() {
               <Button size="sm" onClick={abrirCxP}><Plus className="h-4 w-4 mr-1" /> Nueva CxP</Button>
             )}
           </div>
+
+          {!cargCxP && cxps.length > 0 && (() => {
+            const pendientes = cxps.filter(c => c.estado !== "pagado")
+            const porProveedor = Object.values(
+              pendientes.reduce((acc: Record<string, { proveedor: string; total: number; facturas: number }>, c) => {
+                const key = c.proveedor
+                if (!acc[key]) acc[key] = { proveedor: key, total: 0, facturas: 0 }
+                acc[key].total += c.monto_total - c.monto_pagado
+                acc[key].facturas++
+                return acc
+              }, {})
+            ).sort((a, b) => b.total - a.total)
+
+            return porProveedor.length > 0 ? (
+              <div className="bg-card rounded-2xl border shadow-sm p-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Total pendiente por proveedor</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {porProveedor.map(p => (
+                    <div key={p.proveedor} className="border rounded-xl p-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{p.proveedor}</p>
+                        <p className="text-xs text-muted-foreground">{p.facturas} factura{p.facturas !== 1 ? "s" : ""}</p>
+                        <p className="text-lg font-bold text-red-600">{fmt(p.total)}</p>
+                      </div>
+                      {(rol === "admin" || rol === "cajero") && (
+                        <Button size="sm" variant="outline" className="shrink-0" onClick={() => abrirPagoTodo(p.proveedor, p.total)}>
+                          Pagar todo
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          })()}
 
           {cargCxP && <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
           {!cargCxP && cxps.length === 0 && <p className="text-center py-10 text-muted-foreground">No hay cuentas por pagar</p>}
@@ -940,6 +1019,54 @@ export default function Cobros() {
             </Button>
           </DialogFooter>
         </form>
+      </Dialog>
+
+      {/* Dialog pagar todo a un proveedor */}
+      <Dialog open={!!pagandoProveedor} onClose={() => setPagandoProveedor(null)} className="max-w-md">
+        <DialogHeader onClose={() => setPagandoProveedor(null)}>
+          Pagar todo — {pagandoProveedor}
+        </DialogHeader>
+        <DialogBody className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Se pagarán las facturas pendientes de este proveedor, de la más antigua a la más reciente, hasta cubrir el monto ingresado.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Monto a pagar ($) *</Label>
+              <Input type="number" step="0.01" min="0.01" value={pagoTodoMonto} onChange={e => setPagoTodoMonto(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Fecha *</Label>
+              <Input type="date" value={pagoTodoFecha} onChange={e => setPagoTodoFecha(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Método *</Label>
+              <select value={pagoTodoMetodo} onChange={e => setPagoTodoMetodo(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {METODOS.map(m => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Cuenta origen *</Label>
+              <select value={pagoTodoCuentaId} onChange={e => setPagoTodoCuentaId(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
+              </select>
+            </div>
+          </div>
+          <SaldoAviso cuentaId={pagoTodoCuentaId} monto={pagoTodoMonto} />
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setPagandoProveedor(null)}>Cancelar</Button>
+          <Button
+            onClick={() => pagarTodoMut.mutate()}
+            disabled={pagarTodoMut.isPending || !pagoTodoCuentaId || !pagoTodoMonto}
+          >
+            {pagarTodoMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Confirmar pagos
+          </Button>
+        </DialogFooter>
       </Dialog>
 
       {/* Dialog crear producto desde ítem CxP */}

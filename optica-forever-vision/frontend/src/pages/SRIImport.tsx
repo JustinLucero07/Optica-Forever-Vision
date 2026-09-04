@@ -103,7 +103,8 @@ export default function SRIImport() {
     onSuccess: (data) => {
       setResultado(data)
       setOverrides({})
-      toast.success(data.mensaje)
+      if (data.guardado) toast.success(data.mensaje)
+      else toast.warning(data.mensaje)
     },
     onError: (e) => toast.error(errMsg(e, "Error al procesar el XML")),
   })
@@ -140,11 +141,12 @@ export default function SRIImport() {
   })
 
   const mapearMut = useMutation({
-    mutationFn: (mapeos: Array<{ codigo_proveedor: string; descripcion_proveedor: string; producto_id: number; proveedor_id: number | null }>) =>
+    mutationFn: (mapeos: Array<{ codigo_proveedor: string; descripcion_proveedor: string; producto_id: number; proveedor_id: number | null; item_id: number | null }>) =>
       api.post("/sri/mapear-items", { mapeos }).then(r => r.data),
     onSuccess: (data) => {
       toast.success(data.mensaje)
       qc.invalidateQueries({ queryKey: ["sri-mapeos"] })
+      qc.invalidateQueries({ queryKey: ["productos"] })
     },
     onError: () => toast.error("Error al guardar mapeos"),
   })
@@ -185,7 +187,7 @@ export default function SRIImport() {
 
   function guardarMapeos() {
     if (!resultado) return
-    const nuevos: Array<{ codigo_proveedor: string; descripcion_proveedor: string; producto_id: number; proveedor_id: number | null }> = []
+    const nuevos: Array<{ codigo_proveedor: string; descripcion_proveedor: string; producto_id: number; proveedor_id: number | null; item_id: number | null }> = []
 
     resultado.items.forEach((item, idx) => {
       // Solo guardamos mapeos donde el usuario hizo una selección manual O donde había sin_match y ahora tienen override
@@ -195,6 +197,7 @@ export default function SRIImport() {
           descripcion_proveedor: item.descripcion,
           producto_id: overrides[idx],
           proveedor_id: resultado.proveedor_id,
+          item_id: item.id,
         })
       }
     })

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.deps import get_current_user, require_roles
 from app.models.cxp_item import CxPItem
-from app.models.producto import Producto
+from app.models.producto import MovimientoInventario, Producto
 from app.models.proveedor import Proveedor
 from app.models.sri_map import ProveedorProductoMap
 from app.models.tesoreria import CuentaPorPagar
@@ -101,6 +101,21 @@ def _match_item(db: Session, codigo: str, descripcion: str, proveedor_id: int | 
             }
 
     return {"match": "sin_match", "producto_id": None, "producto_nombre": None, "producto_codigo": None}
+
+
+def _aplicar_entrada_stock(db: Session, producto_id: int, cantidad: float, referencia: str, usuario_id: int) -> None:
+    """Suma `cantidad` al stock del producto y deja registro en movimientos_inventario."""
+    prod = db.get(Producto, producto_id)
+    if not prod or cantidad <= 0:
+        return
+    antes = float(prod.stock_actual)
+    prod.stock_actual = antes + cantidad
+    db.add(MovimientoInventario(
+        producto_id=producto_id, tipo="entrada", cantidad=cantidad,
+        stock_antes=antes, stock_despues=prod.stock_actual,
+        motivo="Compra — factura importada SRI", referencia=referencia,
+        usuario_id=usuario_id,
+    ))
 
 
 @router.post("/importar-xml")
@@ -203,39 +218,63 @@ async def importar_xml(
             })
 
     cxp_id = None
+    ya_importado = False
     if guardar:
-        cxp = CuentaPorPagar(
-            proveedor=razon_social if proveedor_match else f"{razon_social} (RUC {ruc})",
-            concepto=f"Factura #{numero}",
-            monto_total=importe_total,
-            monto_pagado=0,
-            fecha_emision=fecha_emision,
-            referencia=numero,
-            notas=f"Importado desde XML SRI. IVA: ${iva:.2f}",
-            proveedor_id=proveedor_id,
-            orden_id=orden_id,
+        dup_query = select(CuentaPorPagar).where(CuentaPorPagar.referencia == numero)
+        dup_query = dup_query.where(
+            CuentaPorPagar.proveedor_id == proveedor_id if proveedor_id else CuentaPorPagar.proveedor == razon_social
         )
-        db.add(cxp)
-        db.flush()  # get cxp.id before commit
-        for item in items:
-            cxp_item = CxPItem(
-                cxp_id=cxp.id,
-                codigo_proveedor=item["codigo"] or None,
-                descripcion=item["descripcion"] or "—",
-                cantidad=item["cantidad"],
-                precio_unitario=item["precio_unitario"],
-                subtotal=item["subtotal"],
-                producto_id=item.get("producto_id"),
+        existing_cxp = db.execute(dup_query).scalar_one_or_none()
+
+        if existing_cxp:
+            ya_importado = True
+            cxp_id = existing_cxp.id
+            items = []
+        else:
+            cxp = CuentaPorPagar(
+                proveedor=razon_social if proveedor_match else f"{razon_social} (RUC {ruc})",
+                concepto=f"Factura #{numero}",
+                monto_total=importe_total,
+                monto_pagado=0,
+                fecha_emision=fecha_emision,
+                referencia=numero,
+                notas=f"Importado desde XML SRI. IVA: ${iva:.2f}",
+                proveedor_id=proveedor_id,
+                orden_id=orden_id,
             )
-            db.add(cxp_item)
-            db.flush()
-            item["id"] = cxp_item.id
-        db.commit()
-        db.refresh(cxp)
-        cxp_id = cxp.id
+            db.add(cxp)
+            db.flush()  # get cxp.id before commit
+            for item in items:
+                cxp_item = CxPItem(
+                    cxp_id=cxp.id,
+                    codigo_proveedor=item["codigo"] or None,
+                    descripcion=item["descripcion"] or "—",
+                    cantidad=item["cantidad"],
+                    precio_unitario=item["precio_unitario"],
+                    subtotal=item["subtotal"],
+                    producto_id=item.get("producto_id"),
+                )
+                db.add(cxp_item)
+                db.flush()
+                item["id"] = cxp_item.id
+                if item.get("producto_id"):
+                    _aplicar_entrada_stock(db, item["producto_id"], item["cantidad"], numero, current.id)
+            db.commit()
+            db.refresh(cxp)
+            cxp_id = cxp.id
 
     sin_match = sum(1 for i in items if i["match"] == "sin_match")
     con_match = len(items) - sin_match
+
+    if ya_importado:
+        return {
+            "cxp_id": cxp_id, "proveedor": razon_social, "proveedor_id": proveedor_id,
+            "proveedor_nombre": proveedor_match.nombre if proveedor_match else None,
+            "ruc": ruc, "numero": numero, "fecha": fecha_emision.isoformat(),
+            "subtotal": total_sin_imp, "iva": iva, "total": importe_total,
+            "items": [], "guardado": False, "items_con_match": 0, "items_sin_match": 0,
+            "mensaje": f"Esta factura ({numero}) ya había sido importada antes — no se duplicó. Revisa Cuentas por Pagar.",
+        }
 
     return {
         "cxp_id":           cxp_id,
@@ -278,6 +317,7 @@ class MapeoItem(BaseModel):
     descripcion_proveedor: Optional[str] = None
     producto_id: int
     proveedor_id: Optional[int] = None
+    item_id: Optional[int] = None
 
 
 class GuardarMapeosIn(BaseModel):
@@ -288,7 +328,7 @@ class GuardarMapeosIn(BaseModel):
 def guardar_mapeos(
     body: GuardarMapeosIn,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles("admin", "cajero")),
+    current: User = Depends(require_roles("admin", "cajero")),
 ):
     """Guarda o actualiza mapeos codigo_proveedor → producto interno."""
     guardados = 0
@@ -298,6 +338,15 @@ def guardar_mapeos(
         # Verificar que el producto existe
         if not db.get(Producto, m.producto_id):
             continue
+
+        # Si viene de un ítem concreto sin vincular todavía, vincularlo y sumar el stock
+        if m.item_id:
+            cxp_item = db.get(CxPItem, m.item_id)
+            if cxp_item and not cxp_item.producto_id:
+                cxp_item.producto_id = m.producto_id
+                cxp = db.get(CuentaPorPagar, cxp_item.cxp_id)
+                referencia = cxp.referencia if cxp else None
+                _aplicar_entrada_stock(db, m.producto_id, float(cxp_item.cantidad), referencia, current.id)
 
         existing = db.execute(
             select(ProveedorProductoMap).where(
@@ -320,7 +369,7 @@ def guardar_mapeos(
         guardados += 1
 
     db.commit()
-    return {"guardados": guardados, "mensaje": f"{guardados} mapeo(s) guardados correctamente"}
+    return {"guardados": guardados, "mensaje": f"{guardados} mapeo(s) guardados y stock actualizado"}
 
 
 @router.get("/mapeos")
