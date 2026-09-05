@@ -1,9 +1,10 @@
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Plus, Loader2, Pencil, Phone, Mail, Building2 } from "lucide-react"
+import { Plus, Loader2, Pencil, Phone, Mail, Building2, Trash2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
+import { confirmAction } from "@/lib/confirm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -99,6 +100,18 @@ export default function Proveedores() {
       notas: p.notas ?? "",
     })
     setOpenForm(true)
+  }
+
+  function handleDelete(p: Proveedor) {
+    confirmAction(`¿Eliminar el proveedor "${p.nombre}"?`, async () => {
+      try {
+        await api.delete(`/proveedores/${p.id}`)
+        qc.invalidateQueries({ queryKey: ["proveedores"] })
+        toast.success("Proveedor eliminado")
+      } catch (err) {
+        toast.error(errMsg(err, "Error al eliminar"))
+      }
+    }, "Eliminar")
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -217,6 +230,12 @@ export default function Proveedores() {
                     className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
                   >
                     <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(p)}
+                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>

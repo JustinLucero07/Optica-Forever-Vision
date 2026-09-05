@@ -29,7 +29,6 @@ const NAV = [
   { to: "/proformas", label: "Sin facturar", icon: FileX, badge: "proformas" as keyof NavBadges },
   { to: "/inventario", label: "Inventario", icon: Box, badge: null },
   { to: "/ordenes", label: "Órdenes Lab", icon: ClipboardList, badge: "ordenesPendientes" as keyof NavBadges },
-  { to: "/caja", label: "Caja Diaria", icon: Banknote, badge: null },
   { to: "/cobros", label: "Cobros / CxC", icon: Wallet, badge: null },
   { to: "/creditos", label: "Créditos", icon: CreditCard, badge: null },
   { to: "/cxc", label: "Cartera CxC", icon: Landmark, badge: null },
@@ -38,6 +37,7 @@ const NAV = [
 ]
 
 const NAV_ADMIN = [
+  { to: "/caja", label: "Caja Diaria", icon: Banknote, badge: null as keyof NavBadges | null },
   { to: "/sueldos", label: "Sueldos", icon: Banknote, badge: null as keyof NavBadges | null },
   { to: "/proveedores", label: "Proveedores", icon: Truck, badge: null },
   { to: "/usuarios", label: "Usuarios", icon: UserCog, badge: null },

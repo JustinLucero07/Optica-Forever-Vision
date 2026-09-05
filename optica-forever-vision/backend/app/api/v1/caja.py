@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.deps import get_current_user, require_roles
+from app.core.deps import require_roles
 from app.models.caja import CajaDiaria
 from app.models.tesoreria import Cobro, Egreso
 from app.models.user import User
@@ -61,7 +61,7 @@ def _totales_dia(db: Session, fecha: date):
 
 
 @router.get("", response_model=list[CajaOut])
-def listar(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def listar(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))):
     cajas = db.execute(select(CajaDiaria).order_by(CajaDiaria.fecha.desc()).limit(30)).scalars().all()
     result = []
     for c in cajas:
@@ -74,7 +74,7 @@ def listar(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
 
 
 @router.get("/hoy")
-def caja_hoy(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def caja_hoy(db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))):
     hoy = date.today()
     caja = db.scalar(select(CajaDiaria).where(CajaDiaria.fecha == hoy))
     cobros, egresos = _totales_dia(db, hoy)
@@ -87,7 +87,7 @@ def caja_hoy(db: Session = Depends(get_db), _: User = Depends(get_current_user))
 
 
 @router.post("/apertura", response_model=CajaOut, status_code=status.HTTP_201_CREATED)
-def apertura(data: AperturaIn, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def apertura(data: AperturaIn, db: Session = Depends(get_db), current: User = Depends(require_roles("admin"))):
     existente = db.scalar(select(CajaDiaria).where(CajaDiaria.fecha == data.fecha))
     if existente:
         raise HTTPException(status_code=400, detail="Ya existe una caja para esa fecha")
@@ -109,7 +109,7 @@ def apertura(data: AperturaIn, db: Session = Depends(get_db), current: User = De
 
 
 @router.post("/{cid}/cierre", response_model=CajaOut)
-def cierre(cid: int, data: CierreIn, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+def cierre(cid: int, data: CierreIn, db: Session = Depends(get_db), current: User = Depends(require_roles("admin"))):
     caja = db.get(CajaDiaria, cid)
     if not caja:
         raise HTTPException(status_code=404, detail="Caja no encontrada")

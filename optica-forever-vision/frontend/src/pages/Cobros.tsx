@@ -67,6 +67,8 @@ export default function Cobros() {
   const [dialogNuevoProd, setDialogNuevoProd] = useState<CxPItem | null>(null)
   const [nuevoProdNombre, setNuevoProdNombre] = useState("")
   const [nuevoProdCodigo, setNuevoProdCodigo] = useState("")
+  const [nuevoProdPrecioCosto, setNuevoProdPrecioCosto] = useState("")
+  const [nuevoProdPrecioVenta, setNuevoProdPrecioVenta] = useState("")
   const [dialogTransferencia, setDialogTransferencia] = useState(false)
   const [dialogNuevaCuenta, setDialogNuevaCuenta] = useState(false)
   const [editandoCuenta, setEditandoCuenta] = useState<Cuenta | null>(null)
@@ -608,7 +610,7 @@ export default function Cobros() {
                         <tr key={`items-${c.id}`} className="bg-muted/20">
                           <td colSpan={9} className="px-6 py-3">
                             <CxPItemsPanel items={cxpItems} productos={productosMin}
-                              onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setDialogNuevoProd(it) }} />
+                              onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setNuevoProdPrecioCosto(it.precio_unitario ? String(it.precio_unitario) : ""); setNuevoProdPrecioVenta(""); setDialogNuevoProd(it) }} />
                           </td>
                         </tr>
                       )}
@@ -662,7 +664,7 @@ export default function Cobros() {
                   {expandedCxP === c.id && (
                     <div className="border-t bg-muted/20 px-4 py-3">
                       <CxPItemsPanel items={cxpItems} productos={productosMin}
-                        onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setDialogNuevoProd(it) }} />
+                        onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setNuevoProdPrecioCosto(it.precio_unitario ? String(it.precio_unitario) : ""); setNuevoProdPrecioVenta(""); setDialogNuevoProd(it) }} />
                     </div>
                   )}
                 </div>
@@ -1084,6 +1086,17 @@ export default function Cobros() {
             <Label>Código interno</Label>
             <Input value={nuevoProdCodigo} onChange={e => setNuevoProdCodigo(e.target.value)} placeholder="Ej: ARM-001" />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Precio costo ($)</Label>
+              <Input type="number" step="0.01" min="0" value={nuevoProdPrecioCosto} onChange={e => setNuevoProdPrecioCosto(e.target.value)} placeholder="0.00" />
+              <p className="text-xs text-muted-foreground">Tomado de la factura</p>
+            </div>
+            <div className="space-y-1">
+              <Label>Precio venta ($)</Label>
+              <Input type="number" step="0.01" min="0" value={nuevoProdPrecioVenta} onChange={e => setNuevoProdPrecioVenta(e.target.value)} placeholder="0.00" />
+            </div>
+          </div>
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setDialogNuevoProd(null)}>Cancelar</Button>
@@ -1096,7 +1109,9 @@ export default function Cobros() {
                 const res = await api.post("/productos", {
                   nombre: nuevoProdNombre.trim(),
                   codigo: nuevoProdCodigo.trim() || null,
-                  precio_costo: 0, precio_venta: 0, stock_actual: 0, stock_minimo: 0, unidad: "unidad",
+                  precio_costo: Number(nuevoProdPrecioCosto) || 0,
+                  precio_venta: Number(nuevoProdPrecioVenta) || 0,
+                  stock_actual: 0, stock_minimo: 0, unidad: "unidad",
                 })
                 const prod = res.data
                 // vincular ítem al producto

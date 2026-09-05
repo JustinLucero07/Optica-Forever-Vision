@@ -368,14 +368,20 @@ def vincular_item_producto(
     item_id: int,
     producto_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles("admin", "cajero")),
+    current: User = Depends(require_roles("admin", "cajero")),
 ):
+    from app.api.v1.sri import _aplicar_entrada_stock
+
     item = db.execute(
         select(CxPItem).where(CxPItem.id == item_id, CxPItem.cxp_id == cid)
     ).scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
+    ya_tenia_producto = item.producto_id is not None
     item.producto_id = producto_id
+    if not ya_tenia_producto:
+        cxp = db.get(CuentaPorPagar, cid)
+        _aplicar_entrada_stock(db, producto_id, float(item.cantidad), cxp.referencia if cxp else None, current.id)
     db.commit()
     return {"ok": True}
 
