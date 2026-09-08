@@ -205,6 +205,42 @@ export default function Cobros() {
     onError: (e) => toast.error(errMsg(e, "No se puede eliminar")),
   })
 
+  const eliminarCxPItemMut = useMutation({
+    mutationFn: (itemId: number) => api.delete(`/sri/items/${itemId}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["cxp-items", expandedCxP] }); toast.success("Ítem eliminado") },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar ítem")),
+  })
+
+  const [dialogNuevoItem, setDialogNuevoItem] = useState<number | null>(null)
+  const [nuevoItemCodigo, setNuevoItemCodigo] = useState("")
+  const [nuevoItemDescripcion, setNuevoItemDescripcion] = useState("")
+  const [nuevoItemCantidad, setNuevoItemCantidad] = useState("1")
+  const [nuevoItemPrecio, setNuevoItemPrecio] = useState("")
+
+  const crearCxPItemMut = useMutation({
+    mutationFn: () => api.post("/sri/items", {
+      cxp_id: dialogNuevoItem,
+      codigo_proveedor: nuevoItemCodigo.trim() || null,
+      descripcion: nuevoItemDescripcion.trim(),
+      cantidad: Number(nuevoItemCantidad),
+      precio_unitario: Number(nuevoItemPrecio),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cxp-items", expandedCxP] })
+      setDialogNuevoItem(null)
+      toast.success("Ítem agregado")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al agregar ítem")),
+  })
+
+  function abrirNuevoItem(cxpId: number) {
+    setNuevoItemCodigo("")
+    setNuevoItemDescripcion("")
+    setNuevoItemCantidad("1")
+    setNuevoItemPrecio("")
+    setDialogNuevoItem(cxpId)
+  }
+
   const [pagandoProveedor, setPagandoProveedor] = useState<string | null>(null)
   const [pagoTodoMonto, setPagoTodoMonto] = useState("")
   const [pagoTodoCuentaId, setPagoTodoCuentaId] = useState("")
@@ -610,7 +646,9 @@ export default function Cobros() {
                         <tr key={`items-${c.id}`} className="bg-muted/20">
                           <td colSpan={9} className="px-6 py-3">
                             <CxPItemsPanel items={cxpItems} productos={productosMin}
-                              onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setNuevoProdPrecioCosto(it.precio_unitario ? String(it.precio_unitario) : ""); setNuevoProdPrecioVenta(""); setDialogNuevoProd(it) }} />
+                              onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setNuevoProdPrecioCosto(it.precio_unitario ? String(it.precio_unitario) : ""); setNuevoProdPrecioVenta(""); setDialogNuevoProd(it) }}
+                              onEliminar={(itemId) => eliminarCxPItemMut.mutate(itemId)}
+                              onAgregar={() => expandedCxP && abrirNuevoItem(expandedCxP)} />
                           </td>
                         </tr>
                       )}
@@ -664,7 +702,9 @@ export default function Cobros() {
                   {expandedCxP === c.id && (
                     <div className="border-t bg-muted/20 px-4 py-3">
                       <CxPItemsPanel items={cxpItems} productos={productosMin}
-                        onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setNuevoProdPrecioCosto(it.precio_unitario ? String(it.precio_unitario) : ""); setNuevoProdPrecioVenta(""); setDialogNuevoProd(it) }} />
+                        onCrearProd={(it) => { setNuevoProdNombre(it.descripcion); setNuevoProdCodigo(it.codigo_proveedor ?? ""); setNuevoProdPrecioCosto(it.precio_unitario ? String(it.precio_unitario) : ""); setNuevoProdPrecioVenta(""); setDialogNuevoProd(it) }}
+                        onEliminar={(itemId) => eliminarCxPItemMut.mutate(itemId)}
+                        onAgregar={() => expandedCxP && abrirNuevoItem(expandedCxP)} />
                     </div>
                   )}
                 </div>
@@ -1071,6 +1111,47 @@ export default function Cobros() {
         </DialogFooter>
       </Dialog>
 
+      {/* Dialog agregar ítem manual a una factura */}
+      <Dialog open={dialogNuevoItem !== null} onClose={() => setDialogNuevoItem(null)} className="max-w-md">
+        <DialogHeader onClose={() => setDialogNuevoItem(null)}>Agregar ítem a la factura</DialogHeader>
+        <DialogBody className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Útil cuando el proveedor generaliza varios productos en una sola línea (ej: "3 armazones $50") y necesitas desglosarlos para vincular cada uno a su código de inventario.
+          </p>
+          <div className="space-y-1">
+            <Label>Descripción *</Label>
+            <Input value={nuevoItemDescripcion} onChange={e => setNuevoItemDescripcion(e.target.value)} placeholder="Ej: Armazón modelo X" />
+          </div>
+          <div className="space-y-1">
+            <Label>Código del proveedor</Label>
+            <Input value={nuevoItemCodigo} onChange={e => setNuevoItemCodigo(e.target.value)} placeholder="Si la factura ya trae un código, ponlo aquí" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Cantidad *</Label>
+              <Input type="number" step="1" min="1" value={nuevoItemCantidad} onChange={e => setNuevoItemCantidad(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Precio unitario ($) *</Label>
+              <Input type="number" step="0.01" min="0.01" value={nuevoItemPrecio} onChange={e => setNuevoItemPrecio(e.target.value)} />
+            </div>
+          </div>
+          {Number(nuevoItemCantidad) > 0 && Number(nuevoItemPrecio) > 0 && (
+            <p className="text-sm text-muted-foreground">Subtotal: <strong className="text-foreground">{fmt(Number(nuevoItemCantidad) * Number(nuevoItemPrecio))}</strong></p>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setDialogNuevoItem(null)}>Cancelar</Button>
+          <Button
+            type="button"
+            disabled={crearCxPItemMut.isPending || !nuevoItemDescripcion.trim() || !(Number(nuevoItemCantidad) > 0) || !(Number(nuevoItemPrecio) > 0)}
+            onClick={() => crearCxPItemMut.mutate()}
+          >
+            {crearCxPItemMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Agregar ítem
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
       {/* Dialog crear producto desde ítem CxP */}
       <Dialog open={!!dialogNuevoProd} onClose={() => setDialogNuevoProd(null)} className="max-w-md">
         <DialogHeader onClose={() => setDialogNuevoProd(null)}>Crear producto en inventario</DialogHeader>
@@ -1289,17 +1370,24 @@ function CxPAcciones({ c, rol, onPagar, onEliminar }: {
   )
 }
 
-function CxPItemsPanel({ items, productos, onCrearProd }: {
+function CxPItemsPanel({ items, productos, onCrearProd, onEliminar, onAgregar }: {
   items: CxPItem[]
   productos: ProductoMin[]
   onCrearProd: (it: CxPItem) => void
+  onEliminar: (itemId: number) => void
+  onAgregar: () => void
 }) {
-  if (items.length === 0) {
-    return <p className="text-xs text-muted-foreground italic">Sin ítems (factura ingresada manualmente).</p>
-  }
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ítems de la factura</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ítems de la factura</p>
+        <button onClick={onAgregar} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+          <Plus className="h-3 w-3" /> Agregar ítem
+        </button>
+      </div>
+      {items.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">Sin ítems — usa "Agregar ítem" para desglosarlos manualmente.</p>
+      )}
       {/* Mobile: list */}
       <div className="md:hidden space-y-2">
         {items.map(it => {
@@ -1311,7 +1399,12 @@ function CxPItemsPanel({ items, productos, onCrearProd }: {
                   {it.codigo_proveedor && <span className="font-mono text-muted-foreground mr-1">[{it.codigo_proveedor}]</span>}
                   <span>{it.descripcion}</span>
                 </div>
-                <span className="font-medium shrink-0">{fmt(it.subtotal)}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-medium">{fmt(it.subtotal)}</span>
+                  <button onClick={() => onEliminar(it.id)} className="text-muted-foreground hover:text-destructive">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
               <div className="text-muted-foreground">Cant: {it.cantidad} × {fmt(it.precio_unitario)}</div>
               {prod ? (
@@ -1326,6 +1419,7 @@ function CxPItemsPanel({ items, productos, onCrearProd }: {
         })}
       </div>
       {/* Desktop: table */}
+      {items.length > 0 && (
       <table className="hidden md:table w-full text-xs">
         <thead>
           <tr className="text-muted-foreground">
@@ -1335,6 +1429,7 @@ function CxPItemsPanel({ items, productos, onCrearProd }: {
             <th className="text-right py-1 pr-3">P.Unit.</th>
             <th className="text-right py-1 pr-3">Subtotal</th>
             <th className="text-left py-1">Producto inventario</th>
+            <th className="py-1 w-8" />
           </tr>
         </thead>
         <tbody className="divide-y divide-muted">
@@ -1359,11 +1454,17 @@ function CxPItemsPanel({ items, productos, onCrearProd }: {
                     </button>
                   )}
                 </td>
+                <td className="py-1.5">
+                  <button onClick={() => onEliminar(it.id)} className="text-muted-foreground hover:text-destructive">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </td>
               </tr>
             )
           })}
         </tbody>
       </table>
+      )}
     </div>
   )
 }

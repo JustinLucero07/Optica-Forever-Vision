@@ -310,6 +310,54 @@ def eliminar_item(
     db.commit()
 
 
+class NuevoItemIn(BaseModel):
+    cxp_id: int
+    codigo_proveedor: Optional[str] = None
+    descripcion: str
+    cantidad: float
+    precio_unitario: float
+
+
+@router.post("/items")
+def crear_item(
+    body: NuevoItemIn,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin", "cajero")),
+):
+    """Agrega un ítem manual a una factura ya importada (para desglosar líneas generalizadas
+    del proveedor, ej: "3 armazones" → armazón 1, armazón 2, armazón 3). No afecta el total de la CxP."""
+    cxp = db.get(CuentaPorPagar, body.cxp_id)
+    if not cxp:
+        raise HTTPException(404, detail="CxP no encontrada")
+    if body.cantidad <= 0:
+        raise HTTPException(422, detail="La cantidad debe ser positiva")
+
+    item = CxPItem(
+        cxp_id=body.cxp_id,
+        codigo_proveedor=body.codigo_proveedor.strip() if body.codigo_proveedor else None,
+        descripcion=body.descripcion.strip() or "—",
+        cantidad=body.cantidad,
+        precio_unitario=body.precio_unitario,
+        subtotal=round(body.cantidad * body.precio_unitario, 2),
+        producto_id=None,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {
+        "id": item.id,
+        "codigo": item.codigo_proveedor,
+        "descripcion": item.descripcion,
+        "cantidad": float(item.cantidad),
+        "precio_unitario": float(item.precio_unitario),
+        "subtotal": float(item.subtotal),
+        "match": "sin_match",
+        "producto_id": None,
+        "producto_nombre": None,
+        "producto_codigo": None,
+    }
+
+
 # ── Mapeos ─────────────────────────────────────────────────────────────────────
 
 class MapeoItem(BaseModel):

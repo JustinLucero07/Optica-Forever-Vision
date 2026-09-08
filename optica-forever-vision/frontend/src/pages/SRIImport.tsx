@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
   Upload, FileText, CheckCircle, AlertCircle, Loader2,
-  ExternalLink, Link2, Save, Trash2
+  ExternalLink, Link2, Save, Trash2, Plus
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { api } from "@/lib/api"
@@ -11,6 +11,9 @@ import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface Producto { id: number; nombre: string; codigo: string | null }
 
@@ -139,6 +142,36 @@ export default function SRIImport() {
     },
     onError: (e) => toast.error(errMsg(e, "Error al eliminar ítem")),
   })
+
+  const [dialogNuevoItem, setDialogNuevoItem] = useState(false)
+  const [nuevoItemCodigo, setNuevoItemCodigo] = useState("")
+  const [nuevoItemDescripcion, setNuevoItemDescripcion] = useState("")
+  const [nuevoItemCantidad, setNuevoItemCantidad] = useState("1")
+  const [nuevoItemPrecio, setNuevoItemPrecio] = useState("")
+
+  const crearItemMut = useMutation({
+    mutationFn: () => api.post("/sri/items", {
+      cxp_id: resultado?.cxp_id,
+      codigo_proveedor: nuevoItemCodigo.trim() || null,
+      descripcion: nuevoItemDescripcion.trim(),
+      cantidad: Number(nuevoItemCantidad),
+      precio_unitario: Number(nuevoItemPrecio),
+    }).then(r => r.data),
+    onSuccess: (nuevo) => {
+      setResultado(prev => prev ? { ...prev, items: [...prev.items, nuevo], items_sin_match: prev.items_sin_match + 1 } : prev)
+      setDialogNuevoItem(false)
+      toast.success("Ítem agregado")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al agregar ítem")),
+  })
+
+  function abrirNuevoItem() {
+    setNuevoItemCodigo("")
+    setNuevoItemDescripcion("")
+    setNuevoItemCantidad("1")
+    setNuevoItemPrecio("")
+    setDialogNuevoItem(true)
+  }
 
   const mapearMut = useMutation({
     mutationFn: (mapeos: Array<{ codigo_proveedor: string; descripcion_proveedor: string; producto_id: number; proveedor_id: number | null; item_id: number | null }>) =>
@@ -369,7 +402,7 @@ export default function SRIImport() {
           </div>
 
           {/* Items con matching */}
-          {resultado.items.length > 0 && (
+          {(resultado.items.length > 0 || resultado.cxp_id) && (
             <Card>
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <CardTitle className="text-sm">
@@ -378,17 +411,29 @@ export default function SRIImport() {
                     ({resultado.items_con_match} vinculados, {resultado.items_sin_match} pendientes)
                   </span>
                 </CardTitle>
-                {hayOverrides && (
-                  <Button size="sm" onClick={guardarMapeos} disabled={mapearMut.isPending}>
-                    {mapearMut.isPending
-                      ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                      : <Save className="h-4 w-4 mr-1" />
-                    }
-                    Guardar vinculaciones
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {resultado.cxp_id && (
+                    <Button size="sm" variant="outline" onClick={abrirNuevoItem}>
+                      <Plus className="h-4 w-4 mr-1" /> Agregar ítem
+                    </Button>
+                  )}
+                  {hayOverrides && (
+                    <Button size="sm" onClick={guardarMapeos} disabled={mapearMut.isPending}>
+                      {mapearMut.isPending
+                        ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        : <Save className="h-4 w-4 mr-1" />
+                      }
+                      Guardar vinculaciones
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="p-0">
+                {resultado.items.length === 0 ? (
+                  <p className="text-sm text-muted-foreground p-4">
+                    Sin ítems — usa "Agregar ítem" si el proveedor generalizó varios productos en una sola línea y necesitas desglosarlos.
+                  </p>
+                ) : (
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
@@ -455,6 +500,7 @@ export default function SRIImport() {
                     })}
                   </tbody>
                 </table>
+                )}
               </CardContent>
             </Card>
           )}
@@ -497,6 +543,44 @@ export default function SRIImport() {
           </CardContent>
         </Card>
       )}
+
+      {/* Dialog agregar ítem manual */}
+      <Dialog open={dialogNuevoItem} onClose={() => setDialogNuevoItem(false)} className="max-w-md">
+        <DialogHeader onClose={() => setDialogNuevoItem(false)}>Agregar ítem a la factura</DialogHeader>
+        <DialogBody className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Útil cuando el proveedor generaliza varios productos en una sola línea (ej: "3 armazones $50") y necesitas desglosarlos para vincular cada uno a su código de inventario.
+          </p>
+          <div className="space-y-1">
+            <Label>Descripción *</Label>
+            <Input value={nuevoItemDescripcion} onChange={e => setNuevoItemDescripcion(e.target.value)} placeholder="Ej: Armazón modelo X" />
+          </div>
+          <div className="space-y-1">
+            <Label>Código del proveedor</Label>
+            <Input value={nuevoItemCodigo} onChange={e => setNuevoItemCodigo(e.target.value)} placeholder="Si la factura ya trae un código, ponlo aquí" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Cantidad *</Label>
+              <Input type="number" step="1" min="1" value={nuevoItemCantidad} onChange={e => setNuevoItemCantidad(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Precio unitario ($) *</Label>
+              <Input type="number" step="0.01" min="0.01" value={nuevoItemPrecio} onChange={e => setNuevoItemPrecio(e.target.value)} />
+            </div>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setDialogNuevoItem(false)}>Cancelar</Button>
+          <Button
+            type="button"
+            disabled={crearItemMut.isPending || !nuevoItemDescripcion.trim() || !(Number(nuevoItemCantidad) > 0) || !(Number(nuevoItemPrecio) > 0)}
+            onClick={() => crearItemMut.mutate()}
+          >
+            {crearItemMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Agregar ítem
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }
