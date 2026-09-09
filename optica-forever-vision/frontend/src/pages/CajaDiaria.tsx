@@ -92,6 +92,7 @@ export default function CajaDiaria() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["caja-hoy"] })
       qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] })
+      qc.invalidateQueries({ queryKey: ["cobros-hoy-detalle"] })
       setDialogIngreso(false)
       toast.success("Ingreso registrado")
     },
@@ -110,6 +111,7 @@ export default function CajaDiaria() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["caja-hoy"] })
       qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] })
+      qc.invalidateQueries({ queryKey: ["egresos-hoy-detalle"] })
       setDialogEgreso(false)
       toast.success("Egreso registrado")
     },
@@ -175,6 +177,24 @@ export default function CajaDiaria() {
     enabled: dialogCierre,
     staleTime: 0,
   })
+
+  interface MovimientoDia { id: number; numero: string; concepto: string; monto: number; created_at: string; tipo: "ingreso" | "egreso" }
+  const { data: cobrosDetalle = [] } = useQuery<any[]>({
+    queryKey: ["cobros-hoy-detalle", todayISO],
+    queryFn: () => api.get("/cobros", { params: { desde: todayISO, hasta: todayISO, limit: 500 } })
+      .then(r => (Array.isArray(r.data) ? r.data : r.data.items ?? [])),
+    refetchInterval: 15_000,
+  })
+  const { data: egresosDetalle = [] } = useQuery<any[]>({
+    queryKey: ["egresos-hoy-detalle", todayISO],
+    queryFn: () => api.get("/egresos", { params: { desde: todayISO, hasta: todayISO, limit: 500 } })
+      .then(r => (Array.isArray(r.data) ? r.data : r.data.items ?? [])),
+    refetchInterval: 15_000,
+  })
+  const movimientosHoy: MovimientoDia[] = [
+    ...cobrosDetalle.map(c => ({ id: c.id, numero: c.numero, concepto: c.concepto, monto: Number(c.monto), created_at: c.created_at, tipo: "ingreso" as const })),
+    ...egresosDetalle.map(e => ({ id: e.id, numero: e.numero, concepto: e.concepto, monto: Number(e.monto), created_at: e.created_at, tipo: "egreso" as const })),
+  ].sort((a, b) => a.created_at.localeCompare(b.created_at))
 
   const aperturaMut = useMutation({
     mutationFn: (d: any) => api.post("/caja/apertura", {
@@ -269,12 +289,66 @@ export default function CajaDiaria() {
           </div>
 
           {/* Stats del día */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <StatBox label="Saldo apertura" value={fmtMoney(caja?.saldo_apertura)} icon={Wallet} />
             <StatBox label="Cobros del día" value={fmtMoney(hoy?.cobros_dia)} color="text-emerald-600" icon={TrendingUp} />
             <StatBox label="Egresos del día" value={fmtMoney(hoy?.egresos_dia)} color="text-red-500" icon={TrendingDown} />
             <StatBox label="Neto del día" value={fmtMoney(hoy?.neto)} color={(hoy?.neto ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"} icon={DollarSign} />
-            <StatBox label="Saldo apertura" value={fmtMoney(caja?.saldo_apertura)} icon={Wallet} />
+            <StatBox
+              label="Saldo actual en caja"
+              value={fmtMoney((caja?.saldo_apertura ?? 0) + (hoy?.cobros_dia ?? 0) - (hoy?.egresos_dia ?? 0))}
+              color="text-primary"
+              icon={Wallet}
+            />
           </div>
+
+          {/* Movimientos de hoy con saldo acumulado */}
+          {hoy?.abierta && (
+            <div className="bg-card border rounded-xl overflow-hidden">
+              <p className="text-sm font-semibold px-4 py-3 border-b">Movimientos de hoy</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Hora</th>
+                      <th className="text-left px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">N°</th>
+                      <th className="text-left px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Concepto</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Monto</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    <tr className="bg-muted/20">
+                      <td colSpan={4} className="px-4 py-2 text-muted-foreground">Saldo de apertura</td>
+                      <td className="px-4 py-2 text-right font-semibold">{fmtMoney(caja?.saldo_apertura ?? 0)}</td>
+                    </tr>
+                    {movimientosHoy.length === 0 && (
+                      <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">Sin movimientos todavía</td></tr>
+                    )}
+                    {(() => {
+                      let acumulado = caja?.saldo_apertura ?? 0
+                      return movimientosHoy.map(m => {
+                        acumulado += m.tipo === "ingreso" ? m.monto : -m.monto
+                        return (
+                          <tr key={`${m.tipo}-${m.id}`} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">
+                              {new Date(m.created_at).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
+                            </td>
+                            <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{m.numero}</td>
+                            <td className="px-4 py-2">{m.concepto}</td>
+                            <td className={`px-4 py-2 text-right font-medium tabular-nums ${m.tipo === "ingreso" ? "text-emerald-600" : "text-red-500"}`}>
+                              {m.tipo === "ingreso" ? "+" : "-"}{fmtMoney(m.monto)}
+                            </td>
+                            <td className="px-4 py-2 text-right font-semibold tabular-nums">{fmtMoney(acumulado)}</td>
+                          </tr>
+                        )
+                      })
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Detalle del cierre si ya cerró */}
           {caja?.estado === "cerrada" && (
