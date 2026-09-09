@@ -52,8 +52,39 @@ export default function Cobros() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = (searchParams.get("tab") as Tab) ?? "cobros"
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true })
-  const [desde, setDesde] = useState("")
-  const [hasta, setHasta] = useState("")
+
+  function rangoMes(offset: number) {
+    const d = new Date()
+    d.setDate(1)
+    d.setMonth(d.getMonth() + offset)
+    const inicio = new Date(d.getFullYear(), d.getMonth(), 1)
+    const fin = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+    return { desde: inicio.toISOString().slice(0, 10), hasta: fin.toISOString().slice(0, 10) }
+  }
+  const [mesOffset, setMesOffset] = useState(0)
+  const [desde, setDesde] = useState(() => rangoMes(0).desde)
+  const [hasta, setHasta] = useState(() => rangoMes(0).hasta)
+  function irAMes(offset: number) {
+    const r = rangoMes(offset)
+    setMesOffset(offset)
+    setDesde(r.desde)
+    setHasta(r.hasta)
+    setPageCobros(1)
+    setPageEgresos(1)
+  }
+  function verTodo() {
+    setMesOffset(NaN)
+    setDesde("")
+    setHasta("")
+    setPageCobros(1)
+    setPageEgresos(1)
+  }
+  const nombreMes = (offset: number) => {
+    const d = new Date()
+    d.setDate(1)
+    d.setMonth(d.getMonth() + offset)
+    return d.toLocaleDateString("es-EC", { month: "long", year: "numeric" })
+  }
   const [busqConcepto, setBusqConcepto] = useState("")
   const [pageCobros, setPageCobros] = useState(1)
   const [pageEgresos, setPageEgresos] = useState(1)
@@ -454,19 +485,36 @@ export default function Cobros() {
       {/* Filtro fechas */}
       {(tab === "cobros" || tab === "egresos") && (
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 border rounded-lg px-1">
+            <button onClick={() => irAMes((isNaN(mesOffset) ? 0 : mesOffset) - 1)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+              <ChevronDown className="h-4 w-4 rotate-90" />
+            </button>
+            <span className="text-sm font-medium capitalize px-1 min-w-[130px] text-center">
+              {isNaN(mesOffset) ? "Todos los meses" : nombreMes(mesOffset)}
+            </span>
+            <button onClick={() => irAMes((isNaN(mesOffset) ? 0 : mesOffset) + 1)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+              <ChevronDown className="h-4 w-4 -rotate-90" />
+            </button>
+          </div>
+          {mesOffset !== 0 && !isNaN(mesOffset) && (
+            <Button variant="outline" size="sm" className="h-9" onClick={() => irAMes(0)}>Mes actual</Button>
+          )}
+          {!isNaN(mesOffset) && (
+            <Button variant="ghost" size="sm" className="h-9" onClick={verTodo}>Ver todo</Button>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input className="pl-9 h-9 w-48" placeholder="Buscar concepto..." value={busqConcepto} onChange={e => setBusqConcepto(e.target.value)} />
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Desde</span>
-            <Input type="date" value={desde} onChange={e => setDesde(e.target.value)} className="h-9 w-40" />
+            <Input type="date" value={desde} onChange={e => { setDesde(e.target.value); setMesOffset(NaN) }} className="h-9 w-40" />
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Hasta</span>
-            <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="h-9 w-40" />
+            <Input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setMesOffset(NaN) }} className="h-9 w-40" />
           </div>
-          {(desde || hasta || busqConcepto) && <Button variant="ghost" size="sm" onClick={() => { setDesde(""); setHasta(""); setBusqConcepto("") }}>Limpiar</Button>}
+          {busqConcepto && <Button variant="ghost" size="sm" onClick={() => setBusqConcepto("")}>Limpiar búsqueda</Button>}
           <div className="ml-auto">
             {tab === "cobros" && (rol === "admin" || rol === "cajero" || rol === "vendedor") && (
               <Button size="sm" onClick={abrirCobro}><Plus className="h-4 w-4 mr-1" /> Nuevo Cobro</Button>

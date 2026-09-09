@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Plus, XCircle, Loader2, Download, ArrowUpDown, ArrowUp, ArrowDown, Copy, Search } from "lucide-react"
+import { Plus, XCircle, Loader2, Download, ArrowUpDown, ArrowUp, ArrowDown, Copy, Search, ChevronLeft, ChevronRight } from "lucide-react"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
@@ -39,10 +39,26 @@ function SortIcon({ col, sortCol, sortDir }: { col: SortCol; sortCol: SortCol; s
     : <ArrowDown className="h-3 w-3 ml-1 inline" />
 }
 
+function rangoMes(offset: number) {
+  const d = new Date()
+  d.setDate(1)
+  d.setMonth(d.getMonth() + offset)
+  const inicio = new Date(d.getFullYear(), d.getMonth(), 1)
+  const fin = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+  return { desde: inicio.toISOString().slice(0, 10), hasta: fin.toISOString().slice(0, 10) }
+}
+function nombreMes(offset: number) {
+  const d = new Date()
+  d.setDate(1)
+  d.setMonth(d.getMonth() + offset)
+  return d.toLocaleDateString("es-EC", { month: "long", year: "numeric" })
+}
+
 export default function Ventas() {
   const navigate = useNavigate()
-  const [desde, setDesde] = useState("")
-  const [hasta, setHasta] = useState("")
+  const [mesOffset, setMesOffset] = useState(0)
+  const [desde, setDesde] = useState(() => rangoMes(0).desde)
+  const [hasta, setHasta] = useState(() => rangoMes(0).hasta)
   const [busqPaciente, setBusqPaciente] = useState("")
   const [page, setPage]       = useState(1)
   const [perPage, setPerPage] = useState(20)
@@ -51,6 +67,20 @@ export default function Ventas() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const qc = useQueryClient()
   const rol = useAuthStore((s) => s.user?.role)
+
+  function irAMes(offset: number) {
+    const r = rangoMes(offset)
+    setMesOffset(offset)
+    setDesde(r.desde)
+    setHasta(r.hasta)
+    setPage(1)
+  }
+  function verTodo() {
+    setMesOffset(NaN)
+    setDesde("")
+    setHasta("")
+    setPage(1)
+  }
 
   const { data: ventas = [], isLoading } = useQuery<Venta[]>({
     queryKey: ["ventas", desde, hasta],
@@ -155,16 +185,33 @@ export default function Ventas() {
             onChange={e => { setBusqPaciente(e.target.value); setPage(1) }}
           />
         </div>
+        <div className="flex items-center gap-1 border rounded-xl px-1">
+          <button onClick={() => irAMes((isNaN(mesOffset) ? 0 : mesOffset) - 1)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-sm font-medium capitalize px-1 min-w-[130px] text-center">
+            {isNaN(mesOffset) ? "Todos los meses" : nombreMes(mesOffset)}
+          </span>
+          <button onClick={() => irAMes((isNaN(mesOffset) ? 0 : mesOffset) + 1)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+        {mesOffset !== 0 && !isNaN(mesOffset) && (
+          <Button variant="outline" size="sm" className="h-9 rounded-xl" onClick={() => irAMes(0)}>Mes actual</Button>
+        )}
+        {!isNaN(mesOffset) && (
+          <Button variant="ghost" size="sm" className="h-9" onClick={verTodo}>Ver todo</Button>
+        )}
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Desde</span>
-          <Input type="date" value={desde} onChange={e => { setDesde(e.target.value); setPage(1) }} className="h-9 w-40 rounded-xl" />
+          <Input type="date" value={desde} onChange={e => { setDesde(e.target.value); setMesOffset(NaN); setPage(1) }} className="h-9 w-40 rounded-xl" />
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Hasta</span>
-          <Input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setPage(1) }} className="h-9 w-40 rounded-xl" />
+          <Input type="date" value={hasta} onChange={e => { setHasta(e.target.value); setMesOffset(NaN); setPage(1) }} className="h-9 w-40 rounded-xl" />
         </div>
-        {(desde || hasta || busqPaciente) && (
-          <Button variant="ghost" size="sm" onClick={() => { setDesde(""); setHasta(""); setBusqPaciente(""); setPage(1) }}>Limpiar</Button>
+        {busqPaciente && (
+          <Button variant="ghost" size="sm" onClick={() => { setBusqPaciente(""); setPage(1) }}>Limpiar búsqueda</Button>
         )}
       </div>
 

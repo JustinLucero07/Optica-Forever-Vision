@@ -2,12 +2,19 @@ import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Wallet, Lock, Unlock, Loader2, TrendingUp, TrendingDown, DollarSign, Receipt } from "lucide-react"
+import { Wallet, Lock, Unlock, Loader2, TrendingUp, TrendingDown, DollarSign, Receipt, Plus } from "lucide-react"
 import { api } from "@/lib/api"
+import { errMsg } from "@/lib/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@/components/ui/dialog"
+
+const CATEGORIAS_EGRESO = [
+  "Alimentación", "Luz / Agua / Internet", "Arriendo", "Compras / Insumos",
+  "Bisel y Lunas", "Motorizado", "Personal / Sueldos", "Publicidad", "Mantenimiento", "Otros",
+]
+const METODOS_PAGO = ["efectivo", "tarjeta", "transferencia", "cheque"]
 
 interface CajaOut {
   id: number
@@ -54,12 +61,58 @@ function StatBox({ label, value, color = "text-foreground", icon: Icon }: { labe
 export default function CajaDiaria() {
   const [dialogApertura, setDialogApertura] = useState(false)
   const [dialogCierre, setDialogCierre] = useState(false)
+  const [dialogIngreso, setDialogIngreso] = useState(false)
+  const [dialogEgreso, setDialogEgreso] = useState(false)
   const qc = useQueryClient()
 
   const { data: hoy, isLoading: cargandoHoy } = useQuery<CajaHoy>({
     queryKey: ["caja-hoy"],
     queryFn: () => api.get("/caja/hoy").then(r => r.data),
     refetchInterval: 30_000,
+  })
+
+  const { data: cuentas = [] } = useQuery<{ id: number; nombre: string; activa: boolean }[]>({
+    queryKey: ["cuentas-bancarias"],
+    queryFn: () => api.get("/cuentas-bancarias").then(r => r.data),
+  })
+
+  type MovForm = { cuenta_bancaria_id: string; concepto: string; monto: string; metodo_pago: string; categoria: string }
+  const { register: regIn, handleSubmit: hsIn, reset: resetIn } = useForm<MovForm>()
+  const { register: regEg, handleSubmit: hsEg, reset: resetEg } = useForm<MovForm>()
+
+  const ingresoMut = useMutation({
+    mutationFn: (d: MovForm) => api.post("/cobros", {
+      cuenta_bancaria_id: Number(d.cuenta_bancaria_id),
+      fecha: new Date().toISOString().slice(0, 10),
+      concepto: d.concepto,
+      monto: Number(d.monto),
+      metodo_pago: d.metodo_pago,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["caja-hoy"] })
+      qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] })
+      setDialogIngreso(false)
+      toast.success("Ingreso registrado")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al registrar ingreso")),
+  })
+
+  const egresoMut = useMutation({
+    mutationFn: (d: MovForm) => api.post("/egresos", {
+      cuenta_bancaria_id: Number(d.cuenta_bancaria_id),
+      fecha: new Date().toISOString().slice(0, 10),
+      categoria: d.categoria,
+      concepto: d.concepto,
+      monto: Number(d.monto),
+      metodo_pago: d.metodo_pago,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["caja-hoy"] })
+      qc.invalidateQueries({ queryKey: ["cuentas-bancarias"] })
+      setDialogEgreso(false)
+      toast.success("Egreso registrado")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al registrar egreso")),
   })
 
   const { data: historial = [], isLoading: cargandoHist } = useQuery<CajaOut[]>({
@@ -75,7 +128,7 @@ export default function CajaDiaria() {
   const todayISO = new Date().toISOString().slice(0, 10)
   const { data: cobrosHoy = [] } = useQuery<{ metodo_pago: string; monto: number }[]>({
     queryKey: ["cobros-hoy-metodo", todayISO],
-    queryFn: () => api.get("/cobros", { params: { fecha_from: todayISO, fecha_to: todayISO, limit: 500 } })
+    queryFn: () => api.get("/cobros", { params: { desde: todayISO, hasta: todayISO, limit: 500 } })
       .then(r => (Array.isArray(r.data) ? r.data : r.data.items ?? [])),
     enabled: dialogCierre,
     staleTime: 0,
@@ -140,6 +193,16 @@ export default function CajaDiaria() {
           </p>
         </div>
         <div className="flex gap-2">
+          {!cargandoHoy && hoy?.abierta && (
+            <>
+              <Button variant="outline" onClick={() => { resetIn({ cuenta_bancaria_id: cuentas[0]?.id.toString() ?? "", metodo_pago: "efectivo" }); setDialogIngreso(true) }}>
+                <Plus className="h-4 w-4 mr-1 text-emerald-600" /> Ingreso
+              </Button>
+              <Button variant="outline" onClick={() => { resetEg({ cuenta_bancaria_id: cuentas[0]?.id.toString() ?? "", metodo_pago: "efectivo", categoria: "Otros" }); setDialogEgreso(true) }}>
+                <Plus className="h-4 w-4 mr-1 text-red-500" /> Egreso
+              </Button>
+            </>
+          )}
           {!cargandoHoy && !hoy?.abierta && (
             <Button onClick={() => { resetAp(); setDialogApertura(true) }}>
               <Unlock className="h-4 w-4 mr-2" /> Abrir caja
@@ -313,6 +376,84 @@ export default function CajaDiaria() {
             <Button type="submit" disabled={cierreMut.isPending}>
               {cierreMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Cerrar caja
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      {/* Dialog Registrar Ingreso */}
+      <Dialog open={dialogIngreso} onClose={() => setDialogIngreso(false)} className="max-w-sm">
+        <DialogHeader onClose={() => setDialogIngreso(false)}>Registrar ingreso</DialogHeader>
+        <form onSubmit={hsIn(d => ingresoMut.mutate(d))}>
+          <DialogBody className="space-y-4">
+            <div className="space-y-1">
+              <Label>Concepto *</Label>
+              <Input placeholder="Ej: Venta mostrador, abono..." {...regIn("concepto", { required: true })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Monto ($) *</Label>
+              <Input type="number" step="0.01" min="0.01" placeholder="0.00" {...regIn("monto", { required: true })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Método de pago *</Label>
+              <select {...regIn("metodo_pago")} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Cuenta destino *</Label>
+              <select {...regIn("cuenta_bancaria_id", { required: true })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogIngreso(false)}>Cancelar</Button>
+            <Button type="submit" disabled={ingresoMut.isPending}>
+              {ingresoMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Registrar ingreso
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      {/* Dialog Registrar Egreso */}
+      <Dialog open={dialogEgreso} onClose={() => setDialogEgreso(false)} className="max-w-sm">
+        <DialogHeader onClose={() => setDialogEgreso(false)}>Registrar egreso</DialogHeader>
+        <form onSubmit={hsEg(d => egresoMut.mutate(d))}>
+          <DialogBody className="space-y-4">
+            <div className="space-y-1">
+              <Label>Concepto *</Label>
+              <Input placeholder="Ej: Compra de insumos..." {...regEg("concepto", { required: true })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Categoría *</Label>
+              <select {...regEg("categoria")} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {CATEGORIAS_EGRESO.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Monto ($) *</Label>
+              <Input type="number" step="0.01" min="0.01" placeholder="0.00" {...regEg("monto", { required: true })} />
+            </div>
+            <div className="space-y-1">
+              <Label>Método de pago *</Label>
+              <select {...regEg("metodo_pago")} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Cuenta origen *</Label>
+              <select {...regEg("cuenta_bancaria_id", { required: true })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogEgreso(false)}>Cancelar</Button>
+            <Button type="submit" disabled={egresoMut.isPending}>
+              {egresoMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Registrar egreso
             </Button>
           </DialogFooter>
         </form>
