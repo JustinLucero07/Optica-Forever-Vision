@@ -28,6 +28,15 @@ class CierreIn(BaseModel):
     notas_cierre: str | None = None
 
 
+class CajaUpdate(BaseModel):
+    saldo_apertura: float | None = None
+    notas_apertura: str | None = None
+    total_efectivo: float | None = None
+    total_tarjeta: float | None = None
+    total_transferencia: float | None = None
+    notas_cierre: str | None = None
+
+
 class CajaOut(BaseModel):
     id: int
     fecha: date
@@ -136,3 +145,48 @@ def cierre(cid: int, data: CierreIn, db: Session = Depends(get_db), current: Use
     out.cobros_dia = cobros
     out.egresos_dia = egresos
     return out
+
+
+@router.put("/{cid}", response_model=CajaOut)
+def actualizar(cid: int, data: CajaUpdate, db: Session = Depends(get_db), current: User = Depends(require_roles("admin"))):
+    caja = db.get(CajaDiaria, cid)
+    if not caja:
+        raise HTTPException(status_code=404, detail="Caja no encontrada")
+
+    if data.saldo_apertura is not None:
+        caja.saldo_apertura = data.saldo_apertura
+    if data.notas_apertura is not None:
+        caja.notas_apertura = data.notas_apertura
+
+    if caja.estado == "cerrada":
+        cobros, egresos = _totales_dia(db, caja.fecha)
+        efectivo = data.total_efectivo if data.total_efectivo is not None else float(caja.total_efectivo or 0)
+        tarjeta = data.total_tarjeta if data.total_tarjeta is not None else float(caja.total_tarjeta or 0)
+        transferencia = data.total_transferencia if data.total_transferencia is not None else float(caja.total_transferencia or 0)
+        if data.notas_cierre is not None:
+            caja.notas_cierre = data.notas_cierre
+        total_ingresos = efectivo + tarjeta + transferencia
+        caja.total_efectivo = efectivo
+        caja.total_tarjeta = tarjeta
+        caja.total_transferencia = transferencia
+        caja.total_egresos = egresos
+        caja.saldo_cierre = float(caja.saldo_apertura) + total_ingresos - egresos
+        caja.diferencia = total_ingresos - cobros
+        caja.usuario_cierre_id = current.id
+
+    db.commit()
+    db.refresh(caja)
+    cobros, egresos = _totales_dia(db, caja.fecha)
+    out = CajaOut.model_validate(caja)
+    out.cobros_dia = cobros
+    out.egresos_dia = egresos
+    return out
+
+
+@router.delete("/{cid}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar(cid: int, db: Session = Depends(get_db), _: User = Depends(require_roles("admin"))):
+    caja = db.get(CajaDiaria, cid)
+    if not caja:
+        raise HTTPException(status_code=404, detail="Caja no encontrada")
+    db.delete(caja)
+    db.commit()

@@ -112,6 +112,8 @@ export default function CuentasPorCobrar() {
   const navigate = useNavigate()
   const [bucketFilter, setBucketFilter] = useState<BucketFilter>("")
   const [search, setSearch] = useState("")
+  const [venceDesde, setVenceDesde] = useState("")
+  const [venceHasta, setVenceHasta] = useState("")
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(20)
 
@@ -129,7 +131,9 @@ export default function CuentasPorCobrar() {
     const matchSearch =
       search.trim() === "" ||
       c.paciente_nombre.toLowerCase().includes(search.trim().toLowerCase())
-    return matchBucket && matchSearch
+    const matchVenceDesde = !venceDesde || c.fecha_vencimiento >= venceDesde
+    const matchVenceHasta = !venceHasta || c.fecha_vencimiento <= venceHasta
+    return matchBucket && matchSearch && matchVenceDesde && matchVenceHasta
   })
 
   return (
@@ -236,15 +240,35 @@ export default function CuentasPorCobrar() {
               className="border rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary flex-1 max-w-xs"
             />
 
-            {(bucketFilter !== "" || search !== "") && (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">Vence desde</span>
+              <input
+                type="date"
+                value={venceDesde}
+                onChange={(e) => { setPage(1); setVenceDesde(e.target.value) }}
+                className="border rounded-md px-2 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <span className="text-xs text-muted-foreground">hasta</span>
+              <input
+                type="date"
+                value={venceHasta}
+                onChange={(e) => { setPage(1); setVenceHasta(e.target.value) }}
+                className="border rounded-md px-2 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+
+            {(bucketFilter !== "" || search !== "" || venceDesde !== "" || venceHasta !== "") && (
               <button
-                onClick={() => { setBucketFilter(""); setSearch("") }}
+                onClick={() => { setBucketFilter(""); setSearch(""); setVenceDesde(""); setVenceHasta("") }}
                 className="text-sm text-muted-foreground hover:text-foreground underline"
               >
                 Limpiar filtros
               </button>
             )}
           </div>
+          <p className="text-xs text-muted-foreground">
+            Por defecto se muestran todas las cuotas pendientes, sin importar el mes — así no se pierden de vista deudas vencidas de meses anteriores. Usa "Vence desde/hasta" para acotar por fecha de vencimiento si lo necesitas.
+          </p>
 
           {/* Table */}
           <div className="bg-card rounded-2xl border shadow-sm overflow-hidden">

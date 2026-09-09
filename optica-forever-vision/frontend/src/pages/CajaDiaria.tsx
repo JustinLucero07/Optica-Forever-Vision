@@ -2,9 +2,10 @@ import { useState, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Wallet, Lock, Unlock, Loader2, TrendingUp, TrendingDown, DollarSign, Receipt, Plus } from "lucide-react"
+import { Wallet, Lock, Unlock, Loader2, TrendingUp, TrendingDown, DollarSign, Receipt, Plus, Pencil, Trash2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
+import { confirmAction } from "@/lib/confirm"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -118,6 +119,47 @@ export default function CajaDiaria() {
   const { data: historial = [], isLoading: cargandoHist } = useQuery<CajaOut[]>({
     queryKey: ["caja-historial"],
     queryFn: () => api.get("/caja").then(r => r.data),
+  })
+
+  const [editandoCaja, setEditandoCaja] = useState<CajaOut | null>(null)
+  const { register: regEd, handleSubmit: hsEd, reset: resetEd } = useForm<{
+    saldo_apertura: string; total_efectivo: string; total_tarjeta: string; total_transferencia: string
+  }>()
+
+  function abrirEditarCaja(c: CajaOut) {
+    resetEd({
+      saldo_apertura: String(c.saldo_apertura ?? 0),
+      total_efectivo: String(c.total_efectivo ?? 0),
+      total_tarjeta: String(c.total_tarjeta ?? 0),
+      total_transferencia: String(c.total_transferencia ?? 0),
+    })
+    setEditandoCaja(c)
+  }
+
+  const editarCajaMut = useMutation({
+    mutationFn: (d: any) => api.put(`/caja/${editandoCaja!.id}`, {
+      saldo_apertura: Number(d.saldo_apertura) || 0,
+      total_efectivo: Number(d.total_efectivo) || 0,
+      total_tarjeta: Number(d.total_tarjeta) || 0,
+      total_transferencia: Number(d.total_transferencia) || 0,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["caja-historial"] })
+      qc.invalidateQueries({ queryKey: ["caja-hoy"] })
+      setEditandoCaja(null)
+      toast.success("Caja actualizada")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al actualizar")),
+  })
+
+  const eliminarCajaMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/caja/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["caja-historial"] })
+      qc.invalidateQueries({ queryKey: ["caja-hoy"] })
+      toast.success("Registro de caja eliminado")
+    },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
   })
 
   const { register: regAp, handleSubmit: hsAp, reset: resetAp } = useForm<{ saldo_apertura: string; notas_apertura: string }>()
@@ -279,11 +321,12 @@ export default function CajaDiaria() {
                   <th className="text-right px-4 py-3 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Neto</th>
                   <th className="text-right px-4 py-3 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Diferencia</th>
                   <th className="px-4 py-3 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Estado</th>
+                  <th className="px-4 py-3 w-16" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
                 {historial.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-10 text-muted-foreground">Sin registros</td></tr>
+                  <tr><td colSpan={7} className="text-center py-10 text-muted-foreground">Sin registros</td></tr>
                 )}
                 {historial.map(c => {
                   const neto = c.cobros_dia - c.egresos_dia
@@ -302,6 +345,18 @@ export default function CajaDiaria() {
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${c.estado === "abierta" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
                           {c.estado}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1 justify-end">
+                          <button onClick={() => abrirEditarCaja(c)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => confirmAction(`¿Eliminar el registro de caja del ${c.fecha}?`, () => eliminarCajaMut.mutate(c.id), "Eliminar")}
+                            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -454,6 +509,42 @@ export default function CajaDiaria() {
             <Button type="submit" disabled={egresoMut.isPending}>
               {egresoMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Registrar egreso
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      {/* Dialog Editar registro de caja */}
+      <Dialog open={!!editandoCaja} onClose={() => setEditandoCaja(null)} className="max-w-sm">
+        <DialogHeader onClose={() => setEditandoCaja(null)}>Editar caja — {editandoCaja?.fecha}</DialogHeader>
+        <form onSubmit={hsEd(d => editarCajaMut.mutate(d))}>
+          <DialogBody className="space-y-4">
+            <div className="space-y-1">
+              <Label>Saldo de apertura ($)</Label>
+              <Input type="number" step="0.01" min="0" {...regEd("saldo_apertura")} />
+            </div>
+            {editandoCaja?.estado === "cerrada" && (
+              <>
+                <div className="space-y-1">
+                  <Label>Efectivo contado ($)</Label>
+                  <Input type="number" step="0.01" min="0" {...regEd("total_efectivo")} />
+                </div>
+                <div className="space-y-1">
+                  <Label>Tarjeta ($)</Label>
+                  <Input type="number" step="0.01" min="0" {...regEd("total_tarjeta")} />
+                </div>
+                <div className="space-y-1">
+                  <Label>Transferencia ($)</Label>
+                  <Input type="number" step="0.01" min="0" {...regEd("total_transferencia")} />
+                </div>
+              </>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditandoCaja(null)}>Cancelar</Button>
+            <Button type="submit" disabled={editarCajaMut.isPending}>
+              {editarCajaMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Guardar cambios
             </Button>
           </DialogFooter>
         </form>

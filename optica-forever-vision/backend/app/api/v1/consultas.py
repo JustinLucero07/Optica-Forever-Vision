@@ -72,6 +72,8 @@ def _apply_recetas(db: Session, consulta: Consulta, data: ConsultaCreate) -> Non
 @router.get("/consultas", response_model=list[ConsultaGlobalItem])
 def listar_todas_consultas(
     q: str = Query(default="", description="Buscar por paciente, cédula o número"),
+    desde: date | None = None,
+    hasta: date | None = None,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, le=500),
     db: Session = Depends(get_db),
@@ -92,6 +94,10 @@ def listar_todas_consultas(
                 Consulta.numero.ilike(like),
             )
         )
+    if desde:
+        stmt = stmt.where(Consulta.fecha >= desde)
+    if hasta:
+        stmt = stmt.where(Consulta.fecha <= hasta)
     rows = db.execute(stmt.offset(skip).limit(limit)).all()
     result = []
     for consulta, paciente in rows:

@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
@@ -22,6 +23,8 @@ def listar_ordenes(
     paciente_id: int | None = None,
     estado: str | None = None,
     venta_id: int | None = None,
+    desde: date | None = None,
+    hasta: date | None = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -34,6 +37,10 @@ def listar_ordenes(
         stmt = stmt.where(OrdenTrabajo.estado == estado)
     if venta_id:
         stmt = stmt.where(OrdenTrabajo.venta_id == venta_id)
+    if desde:
+        stmt = stmt.where(OrdenTrabajo.fecha_envio >= desde)
+    if hasta:
+        stmt = stmt.where(OrdenTrabajo.fecha_envio <= hasta)
     return db.execute(stmt.offset(skip).limit(limit)).scalars().all()
 
 

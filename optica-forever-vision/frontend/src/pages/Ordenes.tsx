@@ -21,6 +21,20 @@ function fmtDate(s: string) {
   const [y, m, d] = s.slice(0, 10).split("-")
   return `${d}/${m}/${y}`
 }
+function rangoMes(offset: number) {
+  const d = new Date()
+  d.setDate(1)
+  d.setMonth(d.getMonth() + offset)
+  const inicio = new Date(d.getFullYear(), d.getMonth(), 1)
+  const fin = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+  return { desde: toISO(inicio), hasta: toISO(fin) }
+}
+function nombreMes(offset: number) {
+  const d = new Date()
+  d.setDate(1)
+  d.setMonth(d.getMonth() + offset)
+  return d.toLocaleDateString("es-EC", { month: "long", year: "numeric" })
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Proveedor { id: number; nombre: string; tipo: string; telefono: string | null; ruc: string | null }
@@ -558,6 +572,22 @@ export default function Ordenes() {
   const navigate = useNavigate()
   const [filtroEstado, setFiltroEstado] = useState("")
   const [filtroPaciente, setFiltroPaciente] = useState("")
+  const [mesOffset, setMesOffset] = useState(0)
+  const [filtroDesde, setFiltroDesde] = useState(() => rangoMes(0).desde)
+  const [filtroHasta, setFiltroHasta] = useState(() => rangoMes(0).hasta)
+  function irAMes(offset: number) {
+    const r = rangoMes(offset)
+    setMesOffset(offset)
+    setFiltroDesde(r.desde)
+    setFiltroHasta(r.hasta)
+    setPage(1)
+  }
+  function verTodoMes() {
+    setMesOffset(NaN)
+    setFiltroDesde("")
+    setFiltroHasta("")
+    setPage(1)
+  }
   const [vistaKanban, setVistaKanban] = useState(false)
   const [page, setPage] = useState(1)
   const [PER_PAGE, setPER_PAGE] = useState(20)
@@ -605,9 +635,9 @@ export default function Ordenes() {
   const waCloudEnabled = config?.wa_mode === "cloud_api"
 
   const { data: ordenes = [], isLoading } = useQuery<Orden[]>({
-    queryKey: ["ordenes", filtroEstado],
+    queryKey: ["ordenes", filtroEstado, filtroDesde, filtroHasta],
     queryFn: () =>
-      api.get("/ordenes", { params: { estado: filtroEstado || undefined, limit: 200 } }).then(r => r.data),
+      api.get("/ordenes", { params: { estado: filtroEstado || undefined, desde: filtroDesde || undefined, hasta: filtroHasta || undefined, limit: 200 } }).then(r => r.data),
   })
 
   const { data: pacientes = [] } = useQuery<Paciente[]>({
@@ -1031,6 +1061,23 @@ export default function Ordenes() {
           <option value="">Todos los estados</option>
           {ESTADOS_ORDEN.map(s => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
         </select>
+        <div className="flex items-center gap-1 border rounded-md px-1">
+          <button onClick={() => irAMes((isNaN(mesOffset) ? 0 : mesOffset) - 1)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+            <ChevronDown className="h-4 w-4 rotate-90" />
+          </button>
+          <span className="text-sm font-medium capitalize px-1 min-w-[120px] text-center">
+            {isNaN(mesOffset) ? "Todos los meses" : nombreMes(mesOffset)}
+          </span>
+          <button onClick={() => irAMes((isNaN(mesOffset) ? 0 : mesOffset) + 1)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+            <ChevronDown className="h-4 w-4 -rotate-90" />
+          </button>
+        </div>
+        {mesOffset !== 0 && !isNaN(mesOffset) && (
+          <Button variant="outline" size="sm" onClick={() => irAMes(0)}>Mes actual</Button>
+        )}
+        {!isNaN(mesOffset) && (
+          <Button variant="ghost" size="sm" onClick={verTodoMes}>Ver todo</Button>
+        )}
         <div className="ml-auto flex items-center gap-1 border rounded-md overflow-hidden">
           <button onClick={() => setVistaKanban(false)} title="Vista lista"
             className={`p-2 transition-colors ${!vistaKanban ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
