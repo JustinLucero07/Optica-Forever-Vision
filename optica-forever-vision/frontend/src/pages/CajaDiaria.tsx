@@ -178,7 +178,7 @@ export default function CajaDiaria() {
     staleTime: 0,
   })
 
-  interface MovimientoDia { id: number; numero: string; concepto: string; monto: number; created_at: string; tipo: "ingreso" | "egreso" }
+  interface MovimientoDia { id: number; numero: string; concepto: string; monto: number; created_at: string; tipo: "ingreso" | "egreso"; cuenta_bancaria_id: number; metodo_pago: string }
   const { data: cobrosDetalle = [] } = useQuery<any[]>({
     queryKey: ["cobros-hoy-detalle", todayISO],
     queryFn: () => api.get("/cobros", { params: { desde: todayISO, hasta: todayISO, limit: 500 } })
@@ -191,10 +191,27 @@ export default function CajaDiaria() {
       .then(r => (Array.isArray(r.data) ? r.data : r.data.items ?? [])),
     refetchInterval: 15_000,
   })
+
+  // Caja Diaria = solo efectivo físico. Transferencias/tarjeta se ven en el resumen por cuenta.
+  const cobrosEfectivo = cobrosDetalle.filter(c => c.metodo_pago === "efectivo")
+  const egresosEfectivo = egresosDetalle.filter(e => e.metodo_pago === "efectivo")
+  const cobrosEfectivoTotal = cobrosEfectivo.reduce((s, c) => s + Number(c.monto), 0)
+  const egresosEfectivoTotal = egresosEfectivo.reduce((s, e) => s + Number(e.monto), 0)
+  const netoEfectivo = cobrosEfectivoTotal - egresosEfectivoTotal
+
   const movimientosHoy: MovimientoDia[] = [
-    ...cobrosDetalle.map(c => ({ id: c.id, numero: c.numero, concepto: c.concepto, monto: Number(c.monto), created_at: c.created_at, tipo: "ingreso" as const })),
-    ...egresosDetalle.map(e => ({ id: e.id, numero: e.numero, concepto: e.concepto, monto: Number(e.monto), created_at: e.created_at, tipo: "egreso" as const })),
+    ...cobrosEfectivo.map(c => ({ id: c.id, numero: c.numero, concepto: c.concepto, monto: Number(c.monto), created_at: c.created_at, tipo: "ingreso" as const, cuenta_bancaria_id: c.cuenta_bancaria_id, metodo_pago: c.metodo_pago })),
+    ...egresosEfectivo.map(e => ({ id: e.id, numero: e.numero, concepto: e.concepto, monto: Number(e.monto), created_at: e.created_at, tipo: "egreso" as const, cuenta_bancaria_id: e.cuenta_bancaria_id, metodo_pago: e.metodo_pago })),
   ].sort((a, b) => a.created_at.localeCompare(b.created_at))
+
+  // Resumen por cuenta bancaria (todos los métodos, para ver cuánto entró a cada cuenta hoy)
+  const resumenCuentas = cuentas
+    .map(cta => {
+      const ingresos = cobrosDetalle.filter(c => c.cuenta_bancaria_id === cta.id).reduce((s, c) => s + Number(c.monto), 0)
+      const egresos = egresosDetalle.filter(e => e.cuenta_bancaria_id === cta.id).reduce((s, e) => s + Number(e.monto), 0)
+      return { ...cta, ingresos, egresos, neto: ingresos - egresos }
+    })
+    .filter(c => c.ingresos > 0 || c.egresos > 0)
 
   const aperturaMut = useMutation({
     mutationFn: (d: any) => api.post("/caja/apertura", {
@@ -288,24 +305,56 @@ export default function CajaDiaria() {
             {hoy?.abierta ? <><Unlock className="h-4 w-4" /> Caja abierta</> : <><Lock className="h-4 w-4" /> {caja ? "Caja cerrada" : "No hay caja para hoy"}</>}
           </div>
 
-          {/* Stats del día */}
+          {/* Stats del día — SOLO EFECTIVO (esta es la caja física) */}
+          <p className="text-xs text-muted-foreground -mb-1">💵 Solo efectivo — transferencias y tarjeta se ven abajo en "Resumen por cuenta"</p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <StatBox label="Saldo apertura" value={fmtMoney(caja?.saldo_apertura)} icon={Wallet} />
-            <StatBox label="Cobros del día" value={fmtMoney(hoy?.cobros_dia)} color="text-emerald-600" icon={TrendingUp} />
-            <StatBox label="Egresos del día" value={fmtMoney(hoy?.egresos_dia)} color="text-red-500" icon={TrendingDown} />
-            <StatBox label="Neto del día" value={fmtMoney(hoy?.neto)} color={(hoy?.neto ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"} icon={DollarSign} />
+            <StatBox label="Cobros en efectivo" value={fmtMoney(cobrosEfectivoTotal)} color="text-emerald-600" icon={TrendingUp} />
+            <StatBox label="Egresos en efectivo" value={fmtMoney(egresosEfectivoTotal)} color="text-red-500" icon={TrendingDown} />
+            <StatBox label="Neto del día" value={fmtMoney(netoEfectivo)} color={netoEfectivo >= 0 ? "text-emerald-600" : "text-red-500"} icon={DollarSign} />
             <StatBox
               label="Saldo actual en caja"
-              value={fmtMoney((caja?.saldo_apertura ?? 0) + (hoy?.cobros_dia ?? 0) - (hoy?.egresos_dia ?? 0))}
+              value={fmtMoney((caja?.saldo_apertura ?? 0) + netoEfectivo)}
               color="text-primary"
               icon={Wallet}
             />
           </div>
 
+          {/* Resumen por cuenta bancaria */}
+          {resumenCuentas.length > 0 && (
+            <div className="bg-card border rounded-xl overflow-hidden">
+              <p className="text-sm font-semibold px-4 py-3 border-b">Resumen por cuenta bancaria — hoy</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Cuenta</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Ingresos</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Egresos</th>
+                      <th className="text-right px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Neto</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {resumenCuentas.map(c => (
+                      <tr key={c.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-2 font-medium">{c.nombre}</td>
+                        <td className="px-4 py-2 text-right text-emerald-600 tabular-nums">{fmtMoney(c.ingresos)}</td>
+                        <td className="px-4 py-2 text-right text-red-500 tabular-nums">{fmtMoney(c.egresos)}</td>
+                        <td className={`px-4 py-2 text-right font-semibold tabular-nums ${c.neto >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                          {c.neto >= 0 ? "+" : ""}{fmtMoney(c.neto)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Movimientos de hoy con saldo acumulado */}
           {hoy?.abierta && (
             <div className="bg-card border rounded-xl overflow-hidden">
-              <p className="text-sm font-semibold px-4 py-3 border-b">Movimientos de hoy</p>
+              <p className="text-sm font-semibold px-4 py-3 border-b">Movimientos en efectivo — hoy</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -473,14 +522,18 @@ export default function CajaDiaria() {
         <form onSubmit={hsCi(d => cierreMut.mutate(d))}>
           <DialogBody className="space-y-4">
             <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm space-y-1">
-              <p>Saldo apertura: <strong>{fmtMoney(caja?.saldo_apertura)}</strong></p>
-              <p>Cobros registrados: <strong className="text-emerald-600">{fmtMoney(hoy?.cobros_dia)}</strong></p>
-              <p>Egresos registrados: <strong className="text-red-500">{fmtMoney(hoy?.egresos_dia)}</strong></p>
+              <p>Saldo apertura (efectivo): <strong>{fmtMoney(caja?.saldo_apertura)}</strong></p>
+              <p>Cobros registrados (todos los métodos): <strong className="text-emerald-600">{fmtMoney(hoy?.cobros_dia)}</strong></p>
+              <p>Egresos registrados (todos los métodos): <strong className="text-red-500">{fmtMoney(hoy?.egresos_dia)}</strong></p>
               <p className="border-t pt-1 mt-1 font-semibold">
-                Total esperado en caja:{" "}
+                Total esperado (todos los métodos):{" "}
                 <strong className="text-primary">
                   {fmtMoney((caja?.saldo_apertura ?? 0) + (hoy?.cobros_dia ?? 0) - (hoy?.egresos_dia ?? 0))}
                 </strong>
+              </p>
+              <p className="border-t pt-1 mt-1">
+                Efectivo esperado en caja:{" "}
+                <strong className="text-primary">{fmtMoney((caja?.saldo_apertura ?? 0) + netoEfectivo)}</strong>
               </p>
             </div>
             <div className="space-y-1">
