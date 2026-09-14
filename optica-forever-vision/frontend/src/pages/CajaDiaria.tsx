@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, Fragment } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
-import { Wallet, Lock, Unlock, Loader2, TrendingUp, TrendingDown, DollarSign, Receipt, Plus, Pencil, Trash2 } from "lucide-react"
+import { Wallet, Lock, Unlock, Loader2, TrendingUp, TrendingDown, DollarSign, Receipt, Plus, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react"
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
 import { confirmAction } from "@/lib/confirm"
@@ -124,6 +124,27 @@ export default function CajaDiaria() {
   })
 
   const [editandoCaja, setEditandoCaja] = useState<CajaOut | null>(null)
+  const [cajaExpandida, setCajaExpandida] = useState<string | null>(null)
+
+  const { data: cobrosCajaExpandida = [], isFetching: cargandoCobrosExp } = useQuery<any[]>({
+    queryKey: ["cobros-caja-expandida", cajaExpandida],
+    queryFn: () => api.get("/cobros", { params: { desde: cajaExpandida, hasta: cajaExpandida, limit: 500 } })
+      .then(r => (Array.isArray(r.data) ? r.data : r.data.items ?? [])),
+    enabled: !!cajaExpandida,
+  })
+  const { data: egresosCajaExpandida = [], isFetching: cargandoEgresosExp } = useQuery<any[]>({
+    queryKey: ["egresos-caja-expandida", cajaExpandida],
+    queryFn: () => api.get("/egresos", { params: { desde: cajaExpandida, hasta: cajaExpandida, limit: 500 } })
+      .then(r => (Array.isArray(r.data) ? r.data : r.data.items ?? [])),
+    enabled: !!cajaExpandida,
+  })
+  const movimientosCajaExpandida = [
+    ...cobrosCajaExpandida.map(c => ({ ...c, tipo: "ingreso" as const })),
+    ...egresosCajaExpandida.map(e => ({ ...e, tipo: "egreso" as const })),
+  ].sort((a, b) => a.created_at.localeCompare(b.created_at))
+  function nombreCuenta(id: number) {
+    return cuentas.find(c => c.id === id)?.nombre ?? `Cuenta #${id}`
+  }
   const { register: regEd, handleSubmit: hsEd, reset: resetEd } = useForm<{
     saldo_apertura: string; total_efectivo: string; total_tarjeta: string; total_transferencia: string
   }>()
@@ -444,7 +465,7 @@ export default function CajaDiaria() {
                   <th className="text-right px-4 py-3 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Neto</th>
                   <th className="text-right px-4 py-3 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Diferencia</th>
                   <th className="px-4 py-3 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Estado</th>
-                  <th className="px-4 py-3 w-16" />
+                  <th className="px-4 py-3 w-20" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
@@ -453,9 +474,19 @@ export default function CajaDiaria() {
                 )}
                 {historial.map(c => {
                   const neto = c.cobros_dia - c.egresos_dia
+                  const expandida = cajaExpandida === c.fecha
                   return (
-                    <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 font-medium">{c.fecha}</td>
+                    <Fragment key={c.id}>
+                    <tr
+                      className="hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={() => setCajaExpandida(expandida ? null : c.fecha)}
+                    >
+                      <td className="px-4 py-3 font-medium">
+                        <span className="inline-flex items-center gap-1.5">
+                          {expandida ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                          {c.fecha}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-right text-emerald-600 tabular-nums">{fmtMoney(c.cobros_dia)}</td>
                       <td className="px-4 py-3 text-right text-red-500 tabular-nums">{fmtMoney(c.egresos_dia)}</td>
                       <td className={`px-4 py-3 text-right font-bold tabular-nums ${neto >= 0 ? "text-emerald-600" : "text-red-500"}`}>
@@ -469,7 +500,7 @@ export default function CajaDiaria() {
                           {c.estado}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center gap-1 justify-end">
                           <button onClick={() => abrirEditarCaja(c)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
                             <Pencil className="h-3.5 w-3.5" />
@@ -482,6 +513,49 @@ export default function CajaDiaria() {
                         </div>
                       </td>
                     </tr>
+                    {expandida && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-3 bg-muted/20">
+                          {(cargandoCobrosExp || cargandoEgresosExp) ? (
+                            <div className="flex items-center gap-2 text-muted-foreground text-sm py-2"><Loader2 className="h-4 w-4 animate-spin" /> Cargando movimientos…</div>
+                          ) : movimientosCajaExpandida.length === 0 ? (
+                            <p className="text-sm text-muted-foreground py-2">Sin movimientos registrados este día.</p>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-xs text-muted-foreground uppercase tracking-wide">
+                                    <th className="text-left py-1.5 pr-3 font-semibold">Hora</th>
+                                    <th className="text-left py-1.5 pr-3 font-semibold">N°</th>
+                                    <th className="text-left py-1.5 pr-3 font-semibold">Concepto</th>
+                                    <th className="text-left py-1.5 pr-3 font-semibold">Cuenta</th>
+                                    <th className="text-left py-1.5 pr-3 font-semibold">Método</th>
+                                    <th className="text-right py-1.5 font-semibold">Monto</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/50">
+                                  {movimientosCajaExpandida.map(m => (
+                                    <tr key={`${m.tipo}-${m.id}`}>
+                                      <td className="py-1.5 pr-3 text-muted-foreground whitespace-nowrap">
+                                        {new Date(m.created_at).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" })}
+                                      </td>
+                                      <td className="py-1.5 pr-3 font-mono text-xs text-muted-foreground">{m.numero}</td>
+                                      <td className="py-1.5 pr-3">{m.concepto}</td>
+                                      <td className="py-1.5 pr-3">{nombreCuenta(m.cuenta_bancaria_id)}</td>
+                                      <td className="py-1.5 pr-3 capitalize text-muted-foreground">{m.metodo_pago}</td>
+                                      <td className={`py-1.5 text-right font-medium tabular-nums ${m.tipo === "ingreso" ? "text-emerald-600" : "text-red-500"}`}>
+                                        {m.tipo === "ingreso" ? "+" : "-"}{fmtMoney(Number(m.monto))}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>
