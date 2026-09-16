@@ -516,6 +516,25 @@ export default function CajaDiaria() {
                     {expandida && (
                       <tr>
                         <td colSpan={7} className="px-4 py-3 bg-muted/20">
+                          {c.estado === "cerrada" && (
+                            <div className="mb-3 pb-3 border-b">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Detalle del cierre</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 text-sm">
+                                <div><p className="text-muted-foreground text-xs">Saldo apertura</p><p className="font-bold">{fmtMoney(c.saldo_apertura)}</p></div>
+                                <div><p className="text-muted-foreground text-xs">Efectivo contado</p><p className="font-bold">{fmtMoney(c.total_efectivo)}</p></div>
+                                <div><p className="text-muted-foreground text-xs">Tarjeta</p><p className="font-bold">{fmtMoney(c.total_tarjeta)}</p></div>
+                                <div><p className="text-muted-foreground text-xs">Transferencia</p><p className="font-bold">{fmtMoney(c.total_transferencia)}</p></div>
+                                <div><p className="text-muted-foreground text-xs">Saldo de cierre</p><p className="font-bold text-primary">{fmtMoney(c.saldo_cierre)}</p></div>
+                                <div>
+                                  <p className="text-muted-foreground text-xs">Diferencia</p>
+                                  <p className={`font-bold ${(c.diferencia ?? 0) !== 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                                    {fmtMoney(c.diferencia)}{(c.diferencia ?? 0) === 0 && " ✓"}
+                                  </p>
+                                </div>
+                              </div>
+                              {c.notas_cierre && <p className="text-xs text-muted-foreground mt-2">Notas: {c.notas_cierre}</p>}
+                            </div>
+                          )}
                           {(cargandoCobrosExp || cargandoEgresosExp) ? (
                             <div className="flex items-center gap-2 text-muted-foreground text-sm py-2"><Loader2 className="h-4 w-4 animate-spin" /> Cargando movimientos…</div>
                           ) : movimientosCajaExpandida.length === 0 ? (
