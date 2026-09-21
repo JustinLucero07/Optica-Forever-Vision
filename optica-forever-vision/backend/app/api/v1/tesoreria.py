@@ -6,16 +6,17 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_roles
 from app.core.db import get_db
+from app.core.metodos_pago import validar_metodo_cuenta
 from app.core.numeradores import siguiente_numero
 from app.models.cxp_item import CxPItem
 from app.models.tesoreria import CuentaBancaria, Cobro, CuentaPorPagar, Egreso, Transferencia
 from app.models.venta import Venta
 from app.models.user import User
 from app.schemas.tesoreria import (
-    CobroCreate, CobroOut,
+    CobroCreate, CobroOut, CobroUpdate,
     CuentaBancariaCreate, CuentaBancariaOut,
     CxPCreate, CxPOut, CxPPago,
-    EgresoCreate, EgresoOut,
+    EgresoCreate, EgresoOut, EgresoUpdate,
     TransferenciaCreate, TransferenciaOut,
 )
 
@@ -82,6 +83,18 @@ def eliminar_cuenta(
     db.commit()
 
 
+def _recalcular_estado_venta(db: Session, venta_id: int | None) -> None:
+    if not venta_id:
+        return
+    venta = db.get(Venta, venta_id)
+    if not venta or venta.estado == "anulado":
+        return
+    total_cobrado = db.execute(
+        select(func.coalesce(func.sum(Cobro.monto), 0)).where(Cobro.venta_id == venta_id)
+    ).scalar_one()
+    venta.estado = "cobrado" if float(total_cobrado) >= float(venta.total) else "pendiente"
+
+
 # ── Cobros ─────────────────────────────────────────────────────────────────────
 
 @router.get("/cobros", response_model=list[CobroOut])
@@ -121,6 +134,7 @@ def crear_cobro(
     ).scalar_one_or_none()
     if not cuenta:
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    validar_metodo_cuenta(cuenta, data.metodo_pago, es_ingreso=True)
 
     numero = siguiente_numero(db, "numerador_cobro", "COB")
     cobro = Cobro(numero=numero, usuario_id=current.id, **data.model_dump())
@@ -159,8 +173,65 @@ def eliminar_cobro(
     ).scalar_one_or_none()
     if cuenta:
         cuenta.saldo_actual = float(cuenta.saldo_actual) - float(cobro.monto)
+    venta_id = cobro.venta_id
     db.delete(cobro)
+    db.flush()
+    _recalcular_estado_venta(db, venta_id)
     db.commit()
+
+
+@router.put("/cobros/{cid}", response_model=CobroOut)
+def actualizar_cobro(
+    cid: int,
+    data: CobroUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    cobro = db.get(Cobro, cid)
+    if not cobro:
+        raise HTTPException(status_code=404, detail="Cobro no encontrado")
+
+    monto_viejo = float(cobro.monto)
+    monto_nuevo = data.monto if data.monto is not None else monto_viejo
+    if monto_nuevo <= 0:
+        raise HTTPException(status_code=422, detail="El monto debe ser positivo")
+    cuenta_nueva_id = data.cuenta_bancaria_id or cobro.cuenta_bancaria_id
+    metodo_nuevo = data.metodo_pago or cobro.metodo_pago
+
+    ids = sorted({cobro.cuenta_bancaria_id, cuenta_nueva_id})
+    cuentas = {
+        c.id: c for c in db.execute(
+            select(CuentaBancaria).where(CuentaBancaria.id.in_(ids)).order_by(CuentaBancaria.id).with_for_update()
+        ).scalars()
+    }
+    cuenta_nueva = cuentas.get(cuenta_nueva_id)
+    if not cuenta_nueva:
+        raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    if cuenta_nueva_id != cobro.cuenta_bancaria_id or metodo_nuevo != cobro.metodo_pago:
+        validar_metodo_cuenta(cuenta_nueva, metodo_nuevo, es_ingreso=True)
+
+    cuenta_vieja = cuentas.get(cobro.cuenta_bancaria_id)
+    if cuenta_vieja:
+        cuenta_vieja.saldo_actual = float(cuenta_vieja.saldo_actual) - monto_viejo
+    cuenta_nueva.saldo_actual = float(cuenta_nueva.saldo_actual) + monto_nuevo
+
+    cobro.cuenta_bancaria_id = cuenta_nueva_id
+    cobro.monto = monto_nuevo
+    cobro.metodo_pago = metodo_nuevo
+    if data.fecha is not None:
+        cobro.fecha = data.fecha
+    if data.concepto is not None:
+        cobro.concepto = data.concepto
+    if data.referencia is not None:
+        cobro.referencia = data.referencia or None
+    if data.notas is not None:
+        cobro.notas = data.notas or None
+
+    db.flush()
+    _recalcular_estado_venta(db, cobro.venta_id)
+    db.commit()
+    db.refresh(cobro)
+    return cobro
 
 
 # ── Egresos ────────────────────────────────────────────────────────────────────
@@ -202,6 +273,7 @@ def crear_egreso(
     ).scalar_one_or_none()
     if not cuenta:
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    validar_metodo_cuenta(cuenta, data.metodo_pago, es_ingreso=False)
     if float(cuenta.saldo_actual) < data.monto:
         raise HTTPException(status_code=422, detail=f"Saldo insuficiente en {cuenta.nombre} — disponible: ${float(cuenta.saldo_actual):.2f}")
 
@@ -230,8 +302,72 @@ def eliminar_egreso(
     ).scalar_one_or_none()
     if cuenta:
         cuenta.saldo_actual = float(cuenta.saldo_actual) + float(egreso.monto)
+    if egreso.cxp_id:
+        cxp = db.get(CuentaPorPagar, egreso.cxp_id)
+        if cxp:
+            cxp.monto_pagado = max(0.0, float(cxp.monto_pagado) - float(egreso.monto))
+            cxp.estado = "pendiente" if float(cxp.monto_pagado) <= 0.01 else "parcial"
     db.delete(egreso)
     db.commit()
+
+
+@router.put("/egresos/{eid}", response_model=EgresoOut)
+def actualizar_egreso(
+    eid: int,
+    data: EgresoUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles("admin")),
+):
+    egreso = db.get(Egreso, eid)
+    if not egreso:
+        raise HTTPException(status_code=404, detail="Egreso no encontrado")
+
+    monto_viejo = float(egreso.monto)
+    monto_nuevo = data.monto if data.monto is not None else monto_viejo
+    if monto_nuevo <= 0:
+        raise HTTPException(status_code=422, detail="El monto debe ser positivo")
+    if egreso.cxp_id and abs(monto_nuevo - monto_viejo) > 0.001:
+        raise HTTPException(
+            status_code=409,
+            detail="Este egreso es el pago de una cuenta por pagar: no se puede cambiar el monto. Elimínalo y registra el pago de nuevo",
+        )
+    cuenta_nueva_id = data.cuenta_bancaria_id or egreso.cuenta_bancaria_id
+    metodo_nuevo = data.metodo_pago or egreso.metodo_pago
+
+    ids = sorted({egreso.cuenta_bancaria_id, cuenta_nueva_id})
+    cuentas = {
+        c.id: c for c in db.execute(
+            select(CuentaBancaria).where(CuentaBancaria.id.in_(ids)).order_by(CuentaBancaria.id).with_for_update()
+        ).scalars()
+    }
+    cuenta_nueva = cuentas.get(cuenta_nueva_id)
+    if not cuenta_nueva:
+        raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    if cuenta_nueva_id != egreso.cuenta_bancaria_id or metodo_nuevo != egreso.metodo_pago:
+        validar_metodo_cuenta(cuenta_nueva, metodo_nuevo, es_ingreso=False)
+
+    cuenta_vieja = cuentas.get(egreso.cuenta_bancaria_id)
+    if cuenta_vieja:
+        cuenta_vieja.saldo_actual = float(cuenta_vieja.saldo_actual) + monto_viejo
+    cuenta_nueva.saldo_actual = float(cuenta_nueva.saldo_actual) - monto_nuevo
+
+    egreso.cuenta_bancaria_id = cuenta_nueva_id
+    egreso.monto = monto_nuevo
+    egreso.metodo_pago = metodo_nuevo
+    if data.fecha is not None:
+        egreso.fecha = data.fecha
+    if data.categoria is not None:
+        egreso.categoria = data.categoria
+    if data.concepto is not None:
+        egreso.concepto = data.concepto
+    if data.referencia is not None:
+        egreso.referencia = data.referencia or None
+    if data.notas is not None:
+        egreso.notas = data.notas or None
+
+    db.commit()
+    db.refresh(egreso)
+    return egreso
 
 
 # ── Cuentas por Pagar (Labs) ───────────────────────────────────────────────────
@@ -305,6 +441,7 @@ def registrar_pago_cxp(
     ).scalar_one_or_none()
     if not cuenta:
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    validar_metodo_cuenta(cuenta, data.metodo_pago, es_ingreso=False)
     if float(cuenta.saldo_actual) < data.monto:
         raise HTTPException(status_code=422, detail=f"Saldo insuficiente en {cuenta.nombre} — disponible: ${float(cuenta.saldo_actual):.2f}")
 

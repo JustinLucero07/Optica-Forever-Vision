@@ -30,6 +30,27 @@ class CobroCreate(BaseModel):
     notas: str | None = None
 
 
+class CobroUpdate(BaseModel):
+    cuenta_bancaria_id: int | None = None
+    fecha: date | None = None
+    concepto: str | None = None
+    monto: float | None = None
+    metodo_pago: str | None = None
+    referencia: str | None = None
+    notas: str | None = None
+
+
+class EgresoUpdate(BaseModel):
+    cuenta_bancaria_id: int | None = None
+    fecha: date | None = None
+    categoria: str | None = None
+    concepto: str | None = None
+    monto: float | None = None
+    metodo_pago: str | None = None
+    referencia: str | None = None
+    notas: str | None = None
+
+
 class CobroOut(BaseModel):
     id: int
     numero: str

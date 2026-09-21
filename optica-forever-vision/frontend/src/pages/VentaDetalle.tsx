@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
+import { cuentasParaMetodo, cuentaPorDefecto } from "@/lib/metodosCuenta"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,7 +34,7 @@ interface Paciente {
   telefono: string | null; email: string | null; direccion: string | null
 }
 interface Cobro { id: number; monto: number; metodo_pago?: string; fecha?: string }
-interface CuentaBancaria { id: number; nombre: string; saldo_actual: number }
+interface CuentaBancaria { id: number; nombre: string; tipo: string; activa: boolean; saldo_actual: number }
 
 async function printComprobante(v: Venta, pac: Paciente | null, abonado: number) {
   const logo = (await import("@/store/brand")).useBrandStore.getState().logo
@@ -258,7 +259,7 @@ export default function VentaDetalle() {
               className="bg-amber-500 hover:bg-amber-600 text-white"
               onClick={() => {
                 setCobroMonto(pendiente.toFixed(2))
-                if (cuentas.length === 1) setCobroCuenta(String(cuentas[0].id))
+                setCobroCuenta(String(cuentaPorDefecto(cuentas, cobroMetodo, true)?.id ?? ""))
                 setShowCobroForm(f => !f)
               }}
             >
@@ -286,13 +287,7 @@ export default function VentaDetalle() {
                     onChange={e => {
                       const m = e.target.value
                       setCobroMetodo(m)
-                      if (m === "tarjeta") {
-                        const datafono = cuentas.find(c => /dataf|maquina|tarjeta/i.test(c.nombre))
-                        if (datafono) setCobroCuenta(String(datafono.id))
-                      } else if (m === "efectivo") {
-                        const ef = cuentas.find(c => /efectivo/i.test(c.nombre))
-                        if (ef) setCobroCuenta(String(ef.id))
-                      }
+                      setCobroCuenta(String(cuentaPorDefecto(cuentas, m, true)?.id ?? ""))
                     }}
                     className="h-8 w-full rounded-md border text-sm px-2 bg-background"
                   >
@@ -310,7 +305,7 @@ export default function VentaDetalle() {
                     className="h-8 w-full rounded-md border text-sm px-2 bg-background"
                   >
                     <option value="">— selecciona —</option>
-                    {cuentas.map(c => (
+                    {cuentasParaMetodo(cuentas, cobroMetodo, true).map(c => (
                       <option key={c.id} value={c.id}>{c.nombre}</option>
                     ))}
                   </select>

@@ -169,6 +169,8 @@ def pagar_cuota(
     cuenta = db.get(CuentaBancaria, data.cuenta_bancaria_id)
     if not cuenta:
         raise HTTPException(status_code=404, detail="Cuenta bancaria no encontrada")
+    from app.core.metodos_pago import validar_metodo_cuenta
+    validar_metodo_cuenta(cuenta, data.metodo_pago, es_ingreso=True)
 
     cuota.monto_pagado = Decimal(str(data.monto))
     cuota.fecha_pago = data.fecha_pago

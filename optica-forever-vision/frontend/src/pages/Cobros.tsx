@@ -8,6 +8,7 @@ import { deleteWithUndo, confirmAction } from "@/lib/confirm"
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
+import { cuentasParaMetodo, cuentaPorDefecto } from "@/lib/metodosCuenta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -310,7 +311,7 @@ export default function Cobros() {
 
   function abrirPagoTodo(proveedor: string, totalPendiente: number) {
     setPagoTodoMonto(totalPendiente.toFixed(2))
-    setPagoTodoCuentaId(cuentas[0]?.id.toString() ?? "")
+    setPagoTodoCuentaId(cuentaPorDefecto(cuentas, "efectivo", false)?.id.toString() ?? "")
     setPagoTodoMetodo("efectivo")
     setPagoTodoFecha(hoy)
     setPagandoProveedor(proveedor)
@@ -395,15 +396,15 @@ export default function Cobros() {
   ]
 
   function abrirCobro() {
-    resetC({ fecha: hoy, metodo_pago: "efectivo", cuenta_bancaria_id: cuentas[0]?.id.toString() ?? "" })
+    resetC({ fecha: hoy, metodo_pago: "efectivo", cuenta_bancaria_id: cuentaPorDefecto(cuentas, "efectivo", true)?.id.toString() ?? "" })
     setVentaSel(null)
     setBusqVenta("")
     setDialogCobro(true)
   }
   function cerrarCobro() { setDialogCobro(false); setVentaSel(null); setBusqVenta("") }
-  function abrirEgreso() { resetE({ fecha: hoy, metodo_pago: "efectivo", cuenta_bancaria_id: cuentas[0]?.id.toString() ?? "" }); setDialogEgreso(true) }
+  function abrirEgreso() { resetE({ fecha: hoy, metodo_pago: "efectivo", cuenta_bancaria_id: cuentaPorDefecto(cuentas, "efectivo", false)?.id.toString() ?? "" }); setDialogEgreso(true) }
   function abrirCxP() { resetCxP({ fecha_emision: hoy }); setDialogCxP(true) }
-  function abrirPago(c: CxP) { resetPago({ fecha: hoy, metodo_pago: "efectivo", monto: String(c.monto_total - c.monto_pagado), cuenta_bancaria_id: cuentas[0]?.id.toString() ?? "" }); setPagandoCxP(c) }
+  function abrirPago(c: CxP) { resetPago({ fecha: hoy, metodo_pago: "efectivo", monto: String(c.monto_total - c.monto_pagado), cuenta_bancaria_id: cuentaPorDefecto(cuentas, "efectivo", false)?.id.toString() ?? "" }); setPagandoCxP(c) }
 
   function seleccionarVenta(v: VentaPendiente) {
     setVentaSel(v)
@@ -415,12 +416,8 @@ export default function Cobros() {
   const metodoC = watchC("metodo_pago")
   useEffect(() => {
     if (!cuentas.length) return
-    if (metodoC === "tarjeta_debito" || metodoC === "tarjeta_credito" || metodoC === "tarjeta") {
-      const datafono = cuentas.find(c => /dataf|maquina|tarjeta/i.test(c.nombre))
-      if (datafono) svC("cuenta_bancaria_id", String(datafono.id))
-    } else if (metodoC === "efectivo") {
-      const ef = cuentas.find(c => /efectivo/i.test(c.nombre))
-      if (ef) svC("cuenta_bancaria_id", String(ef.id))
+    if (!cuentasParaMetodo(cuentas, metodoC, true).some(c => c.id === Number(watchC("cuenta_bancaria_id")))) {
+      svC("cuenta_bancaria_id", String(cuentaPorDefecto(cuentas, metodoC, true)?.id ?? ""))
     }
   }, [metodoC, cuentas.length])
 
@@ -436,9 +433,9 @@ export default function Cobros() {
     return !q || v.numero.toLowerCase().includes(q) || (v.paciente_nombre ?? "").toLowerCase().includes(q)
   })
 
-  const SelectCuenta = ({ reg }: { reg: UseFormRegisterReturn }) => (
+  const SelectCuenta = ({ reg, metodo, esIngreso = true }: { reg: UseFormRegisterReturn; metodo: string; esIngreso?: boolean }) => (
     <select {...reg} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
+      {cuentasParaMetodo(cuentas, metodo ?? "efectivo", esIngreso).map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
     </select>
   )
 
@@ -949,7 +946,7 @@ export default function Cobros() {
               </div>
               <div className="space-y-1">
                 <Label>Cuenta destino *</Label>
-                <SelectCuenta reg={rC("cuenta_bancaria_id", { required: true })} />
+                <SelectCuenta reg={rC("cuenta_bancaria_id", { required: true })} metodo={metodoC} />
               </div>
             </div>
             <div className="space-y-1">
@@ -999,7 +996,7 @@ export default function Cobros() {
               </div>
               <div className="space-y-1">
                 <Label>Cuenta origen *</Label>
-                <SelectCuenta reg={rE("cuenta_bancaria_id", { required: true })} />
+                <SelectCuenta reg={rE("cuenta_bancaria_id", { required: true })} metodo={watchE("metodo_pago")} esIngreso={false} />
               </div>
             </div>
             <SaldoAviso cuentaId={watchE("cuenta_bancaria_id")} monto={watchE("monto")} />
@@ -1093,7 +1090,7 @@ export default function Cobros() {
               </div>
               <div className="space-y-1">
                 <Label>Cuenta origen *</Label>
-                <SelectCuenta reg={rPago("cuenta_bancaria_id", { required: true })} />
+                <SelectCuenta reg={rPago("cuenta_bancaria_id", { required: true })} metodo={watchPago("metodo_pago")} esIngreso={false} />
               </div>
             </div>
             <SaldoAviso cuentaId={watchPago("cuenta_bancaria_id")} monto={watchPago("monto")} />
@@ -1133,7 +1130,12 @@ export default function Cobros() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label>Método *</Label>
-              <select value={pagoTodoMetodo} onChange={e => setPagoTodoMetodo(e.target.value)}
+              <select value={pagoTodoMetodo} onChange={e => {
+                const m = e.target.value
+                setPagoTodoMetodo(m)
+                if (!cuentasParaMetodo(cuentas, m, false).some(c => String(c.id) === pagoTodoCuentaId))
+                  setPagoTodoCuentaId(String(cuentaPorDefecto(cuentas, m, false)?.id ?? ""))
+              }}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 {METODOS.map(m => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
               </select>
@@ -1142,7 +1144,7 @@ export default function Cobros() {
               <Label>Cuenta origen *</Label>
               <select value={pagoTodoCuentaId} onChange={e => setPagoTodoCuentaId(e.target.value)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
+                {cuentasParaMetodo(cuentas, pagoTodoMetodo, false).map(c => <option key={c.id} value={c.id}>{c.nombre} ({fmt(c.saldo_actual)})</option>)}
               </select>
             </div>
           </div>

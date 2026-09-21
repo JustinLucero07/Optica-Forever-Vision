@@ -6,6 +6,7 @@ import { Wallet, Lock, Unlock, Loader2, TrendingUp, TrendingDown, DollarSign, Re
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
 import { confirmAction } from "@/lib/confirm"
+import { cuentasParaMetodo, cuentaPorDefecto } from "@/lib/metodosCuenta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -72,14 +73,32 @@ export default function CajaDiaria() {
     refetchInterval: 30_000,
   })
 
-  const { data: cuentas = [] } = useQuery<{ id: number; nombre: string; activa: boolean }[]>({
+  const { data: cuentas = [] } = useQuery<{ id: number; nombre: string; tipo: string; activa: boolean }[]>({
     queryKey: ["cuentas-bancarias"],
     queryFn: () => api.get("/cuentas-bancarias").then(r => r.data),
   })
 
   type MovForm = { cuenta_bancaria_id: string; concepto: string; monto: string; metodo_pago: string; categoria: string }
-  const { register: regIn, handleSubmit: hsIn, reset: resetIn } = useForm<MovForm>()
-  const { register: regEg, handleSubmit: hsEg, reset: resetEg } = useForm<MovForm>()
+  const { register: regIn, handleSubmit: hsIn, reset: resetIn, watch: watchIn, setValue: setValIn } = useForm<MovForm>()
+  const { register: regEg, handleSubmit: hsEg, reset: resetEg, watch: watchEg, setValue: setValEg } = useForm<MovForm>()
+
+  // Solo cuentas coherentes con el método: efectivo→caja, transferencia→banco, tarjeta→máquina
+  const metodoIn = watchIn("metodo_pago") ?? "efectivo"
+  const metodoEg = watchEg("metodo_pago") ?? "efectivo"
+  const cuentasIn = cuentasParaMetodo(cuentas, metodoIn, true)
+  const cuentasEg = cuentasParaMetodo(cuentas, metodoEg, false)
+  useEffect(() => {
+    if (!dialogIngreso) return
+    if (!cuentasIn.some(c => c.id === Number(watchIn("cuenta_bancaria_id")))) {
+      setValIn("cuenta_bancaria_id", String(cuentaPorDefecto(cuentas, metodoIn, true)?.id ?? ""))
+    }
+  }, [metodoIn, dialogIngreso, cuentas.length])
+  useEffect(() => {
+    if (!dialogEgreso) return
+    if (!cuentasEg.some(c => c.id === Number(watchEg("cuenta_bancaria_id")))) {
+      setValEg("cuenta_bancaria_id", String(cuentaPorDefecto(cuentas, metodoEg, false)?.id ?? ""))
+    }
+  }, [metodoEg, dialogEgreso, cuentas.length])
 
   const ingresoMut = useMutation({
     mutationFn: (d: MovForm) => api.post("/cobros", {
@@ -185,6 +204,72 @@ export default function CajaDiaria() {
     onError: (e) => toast.error(errMsg(e, "Error al eliminar")),
   })
 
+  // ── Editar / eliminar movimientos (cobros y egresos) ─────────────────────────
+  type Mov = {
+    id: number; tipo: "ingreso" | "egreso"; numero: string; concepto: string; monto: number | string
+    metodo_pago: string; cuenta_bancaria_id: number; categoria?: string
+    venta_id?: number | null; cxp_id?: number | null
+  }
+  const [editandoMov, setEditandoMov] = useState<Mov | null>(null)
+  const [mvConcepto, setMvConcepto] = useState("")
+  const [mvMonto, setMvMonto] = useState("")
+  const [mvMetodo, setMvMetodo] = useState("efectivo")
+  const [mvCuenta, setMvCuenta] = useState("")
+  const [mvCategoria, setMvCategoria] = useState("Otros")
+  const esIngresoMv = editandoMov?.tipo === "ingreso"
+  const cuentasMv = cuentasParaMetodo(cuentas, mvMetodo, esIngresoMv, editandoMov?.cuenta_bancaria_id)
+  const metodosMv = METODOS_PAGO.includes(mvMetodo) ? METODOS_PAGO : [...METODOS_PAGO, mvMetodo]
+
+  useEffect(() => {
+    if (!editandoMov) return
+    if (!cuentasMv.some(c => String(c.id) === mvCuenta)) {
+      setMvCuenta(String(cuentaPorDefecto(cuentas, mvMetodo, esIngresoMv)?.id ?? ""))
+    }
+  }, [mvMetodo, editandoMov])
+
+  function abrirEditarMov(m: Mov) {
+    setMvConcepto(m.concepto)
+    setMvMonto(String(m.monto))
+    setMvMetodo(m.metodo_pago)
+    setMvCuenta(String(m.cuenta_bancaria_id))
+    setMvCategoria(m.categoria ?? "Otros")
+    setEditandoMov(m)
+  }
+
+  function invalidarMovimientos() {
+    for (const k of ["caja-hoy", "caja-historial", "cuentas-bancarias", "cobros-hoy-detalle", "egresos-hoy-detalle",
+      "cobros-caja-expandida", "egresos-caja-expandida", "cobros", "egresos", "ventas", "venta"]) {
+      qc.invalidateQueries({ queryKey: [k] })
+    }
+  }
+
+  const editarMovMut = useMutation({
+    mutationFn: () => {
+      const m = editandoMov!
+      const base = { concepto: mvConcepto.trim(), monto: Number(mvMonto), metodo_pago: mvMetodo, cuenta_bancaria_id: Number(mvCuenta) }
+      return m.tipo === "ingreso"
+        ? api.put(`/cobros/${m.id}`, base)
+        : api.put(`/egresos/${m.id}`, { ...base, categoria: mvCategoria })
+    },
+    onSuccess: () => { invalidarMovimientos(); setEditandoMov(null); toast.success("Movimiento actualizado") },
+    onError: (e) => toast.error(errMsg(e, "Error al actualizar el movimiento")),
+  })
+
+  const eliminarMovMut = useMutation({
+    mutationFn: (m: Mov) => api.delete(m.tipo === "ingreso" ? `/cobros/${m.id}` : `/egresos/${m.id}`),
+    onSuccess: () => { invalidarMovimientos(); toast.success("Movimiento eliminado") },
+    onError: (e) => toast.error(errMsg(e, "Error al eliminar el movimiento")),
+  })
+
+  function pedirEliminarMov(m: Mov) {
+    const extra = m.venta_id ? " Pertenece a una venta: la venta volverá a quedar con saldo pendiente." : ""
+    confirmAction(
+      `¿Eliminar ${m.tipo === "ingreso" ? "el ingreso" : "el egreso"} «${m.concepto}» por ${fmtMoney(Number(m.monto))}? Se ajustará el saldo de la cuenta.${extra}`,
+      () => eliminarMovMut.mutate(m),
+      "Eliminar",
+    )
+  }
+
   const { register: regAp, handleSubmit: hsAp, reset: resetAp } = useForm<{ saldo_apertura: string; notas_apertura: string }>()
   const { register: regCi, handleSubmit: hsCi, reset: resetCi, setValue: setCiVal } = useForm<{
     total_efectivo: string; total_tarjeta: string; total_transferencia: string; notas_cierre: string
@@ -199,7 +284,7 @@ export default function CajaDiaria() {
     staleTime: 0,
   })
 
-  interface MovimientoDia { id: number; numero: string; concepto: string; monto: number; created_at: string; tipo: "ingreso" | "egreso"; cuenta_bancaria_id: number; metodo_pago: string }
+  interface MovimientoDia { id: number; numero: string; concepto: string; monto: number; created_at: string; tipo: "ingreso" | "egreso"; cuenta_bancaria_id: number; metodo_pago: string; categoria?: string; venta_id?: number | null; cxp_id?: number | null }
   const { data: cobrosDetalle = [] } = useQuery<any[]>({
     queryKey: ["cobros-hoy-detalle", todayISO],
     queryFn: () => api.get("/cobros", { params: { desde: todayISO, hasta: todayISO, limit: 500 } })
@@ -221,8 +306,8 @@ export default function CajaDiaria() {
   const netoEfectivo = cobrosEfectivoTotal - egresosEfectivoTotal
 
   const movimientosHoy: MovimientoDia[] = [
-    ...cobrosEfectivo.map(c => ({ id: c.id, numero: c.numero, concepto: c.concepto, monto: Number(c.monto), created_at: c.created_at, tipo: "ingreso" as const, cuenta_bancaria_id: c.cuenta_bancaria_id, metodo_pago: c.metodo_pago })),
-    ...egresosEfectivo.map(e => ({ id: e.id, numero: e.numero, concepto: e.concepto, monto: Number(e.monto), created_at: e.created_at, tipo: "egreso" as const, cuenta_bancaria_id: e.cuenta_bancaria_id, metodo_pago: e.metodo_pago })),
+    ...cobrosEfectivo.map(c => ({ id: c.id, numero: c.numero, concepto: c.concepto, monto: Number(c.monto), created_at: c.created_at, tipo: "ingreso" as const, cuenta_bancaria_id: c.cuenta_bancaria_id, metodo_pago: c.metodo_pago, venta_id: c.venta_id })),
+    ...egresosEfectivo.map(e => ({ id: e.id, numero: e.numero, concepto: e.concepto, monto: Number(e.monto), created_at: e.created_at, tipo: "egreso" as const, cuenta_bancaria_id: e.cuenta_bancaria_id, metodo_pago: e.metodo_pago, categoria: e.categoria, cxp_id: e.cxp_id })),
   ].sort((a, b) => a.created_at.localeCompare(b.created_at))
 
   // Resumen por cuenta bancaria (todos los métodos, para ver cuánto entró a cada cuenta hoy)
@@ -295,10 +380,10 @@ export default function CajaDiaria() {
         <div className="flex gap-2">
           {!cargandoHoy && hoy?.abierta && (
             <>
-              <Button variant="outline" onClick={() => { resetIn({ cuenta_bancaria_id: cuentas[0]?.id.toString() ?? "", metodo_pago: "efectivo" }); setDialogIngreso(true) }}>
+              <Button variant="outline" onClick={() => { resetIn({ cuenta_bancaria_id: cuentaPorDefecto(cuentas, "efectivo", true)?.id.toString() ?? "", metodo_pago: "efectivo" }); setDialogIngreso(true) }}>
                 <Plus className="h-4 w-4 mr-1 text-emerald-600" /> Ingreso
               </Button>
-              <Button variant="outline" onClick={() => { resetEg({ cuenta_bancaria_id: cuentas[0]?.id.toString() ?? "", metodo_pago: "efectivo", categoria: "Otros" }); setDialogEgreso(true) }}>
+              <Button variant="outline" onClick={() => { resetEg({ cuenta_bancaria_id: cuentaPorDefecto(cuentas, "efectivo", false)?.id.toString() ?? "", metodo_pago: "efectivo", categoria: "Otros" }); setDialogEgreso(true) }}>
                 <Plus className="h-4 w-4 mr-1 text-red-500" /> Egreso
               </Button>
             </>
@@ -385,15 +470,17 @@ export default function CajaDiaria() {
                       <th className="text-left px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Concepto</th>
                       <th className="text-right px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Monto</th>
                       <th className="text-right px-4 py-2 text-xs text-muted-foreground uppercase tracking-wide font-semibold">Saldo</th>
+                      <th className="px-4 py-2 w-16" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
                     <tr className="bg-muted/20">
                       <td colSpan={4} className="px-4 py-2 text-muted-foreground">Saldo de apertura</td>
                       <td className="px-4 py-2 text-right font-semibold">{fmtMoney(caja?.saldo_apertura ?? 0)}</td>
+                      <td />
                     </tr>
                     {movimientosHoy.length === 0 && (
-                      <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">Sin movimientos todavía</td></tr>
+                      <tr><td colSpan={6} className="text-center py-6 text-muted-foreground">Sin movimientos todavía</td></tr>
                     )}
                     {(() => {
                       let acumulado = caja?.saldo_apertura ?? 0
@@ -410,6 +497,16 @@ export default function CajaDiaria() {
                               {m.tipo === "ingreso" ? "+" : "-"}{fmtMoney(m.monto)}
                             </td>
                             <td className="px-4 py-2 text-right font-semibold tabular-nums">{fmtMoney(acumulado)}</td>
+                            <td className="px-4 py-2">
+                              <div className="flex items-center gap-1 justify-end">
+                                <button title="Editar" onClick={() => abrirEditarMov(m)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button title="Eliminar" onClick={() => pedirEliminarMov(m)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         )
                       })
@@ -549,7 +646,8 @@ export default function CajaDiaria() {
                                     <th className="text-left py-1.5 pr-3 font-semibold">Concepto</th>
                                     <th className="text-left py-1.5 pr-3 font-semibold">Cuenta</th>
                                     <th className="text-left py-1.5 pr-3 font-semibold">Método</th>
-                                    <th className="text-right py-1.5 font-semibold">Monto</th>
+                                    <th className="text-right py-1.5 pr-3 font-semibold">Monto</th>
+                                    <th className="w-16" />
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/50">
@@ -562,8 +660,18 @@ export default function CajaDiaria() {
                                       <td className="py-1.5 pr-3">{m.concepto}</td>
                                       <td className="py-1.5 pr-3">{nombreCuenta(m.cuenta_bancaria_id)}</td>
                                       <td className="py-1.5 pr-3 capitalize text-muted-foreground">{m.metodo_pago}</td>
-                                      <td className={`py-1.5 text-right font-medium tabular-nums ${m.tipo === "ingreso" ? "text-emerald-600" : "text-red-500"}`}>
+                                      <td className={`py-1.5 pr-3 text-right font-medium tabular-nums ${m.tipo === "ingreso" ? "text-emerald-600" : "text-red-500"}`}>
                                         {m.tipo === "ingreso" ? "+" : "-"}{fmtMoney(Number(m.monto))}
+                                      </td>
+                                      <td className="py-1.5">
+                                        <div className="flex items-center gap-1 justify-end">
+                                          <button title="Editar" onClick={() => abrirEditarMov(m)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground">
+                                            <Pencil className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button title="Eliminar" onClick={() => pedirEliminarMov(m)} className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
                                       </td>
                                     </tr>
                                   ))}
@@ -678,8 +786,13 @@ export default function CajaDiaria() {
             <div className="space-y-1">
               <Label>Cuenta destino *</Label>
               <select {...regIn("cuenta_bancaria_id", { required: true })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                {cuentasIn.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
+              <p className="text-xs text-muted-foreground">
+                {cuentasIn.length === 0
+                  ? "No hay una cuenta activa compatible con este método de pago."
+                  : "Efectivo → caja · Transferencia/depósito → banco · Tarjeta → máquina"}
+              </p>
             </div>
           </DialogBody>
           <DialogFooter>
@@ -720,8 +833,13 @@ export default function CajaDiaria() {
             <div className="space-y-1">
               <Label>Cuenta origen *</Label>
               <select {...regEg("cuenta_bancaria_id", { required: true })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                {cuentasEg.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
+              <p className="text-xs text-muted-foreground">
+                {cuentasEg.length === 0
+                  ? "No hay una cuenta activa compatible con este método de pago."
+                  : "El efectivo sale de la caja; los bancos solo por transferencia, depósito, cheque o tarjeta"}
+              </p>
             </div>
           </DialogBody>
           <DialogFooter>
@@ -729,6 +847,60 @@ export default function CajaDiaria() {
             <Button type="submit" disabled={egresoMut.isPending}>
               {egresoMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Registrar egreso
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      {/* Dialog Editar movimiento (ingreso / egreso) */}
+      <Dialog open={!!editandoMov} onClose={() => setEditandoMov(null)} className="max-w-sm">
+        <DialogHeader onClose={() => setEditandoMov(null)}>
+          Editar {esIngresoMv ? "ingreso" : "egreso"} {editandoMov?.numero}
+        </DialogHeader>
+        <form onSubmit={e => { e.preventDefault(); editarMovMut.mutate() }}>
+          <DialogBody className="space-y-4">
+            {editandoMov?.cxp_id && (
+              <p className="text-xs text-amber-600">Es el pago de una cuenta por pagar: el monto no se puede cambiar.</p>
+            )}
+            <div className="space-y-1">
+              <Label>Concepto *</Label>
+              <Input value={mvConcepto} onChange={e => setMvConcepto(e.target.value)} />
+            </div>
+            {!esIngresoMv && (
+              <div className="space-y-1">
+                <Label>Categoría</Label>
+                <select value={mvCategoria} onChange={e => setMvCategoria(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                  {(CATEGORIAS_EGRESO.includes(mvCategoria) ? CATEGORIAS_EGRESO : [...CATEGORIAS_EGRESO, mvCategoria]).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label>Monto ($) *</Label>
+              <Input type="number" step="0.01" min="0.01" value={mvMonto} onChange={e => setMvMonto(e.target.value)} disabled={!!editandoMov?.cxp_id} />
+            </div>
+            <div className="space-y-1">
+              <Label>Método de pago *</Label>
+              <select value={mvMetodo} onChange={e => setMvMetodo(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {metodosMv.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>{esIngresoMv ? "Cuenta destino" : "Cuenta origen"} *</Label>
+              <select value={mvCuenta} onChange={e => setMvCuenta(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                {cuentasMv.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {cuentasMv.length === 0
+                  ? "No hay una cuenta activa compatible con este método de pago."
+                  : "Solo se muestran cuentas compatibles con el método elegido"}
+              </p>
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditandoMov(null)}>Cancelar</Button>
+            <Button type="submit" disabled={editarMovMut.isPending || !mvConcepto.trim() || !(Number(mvMonto) > 0) || !mvCuenta}>
+              {editarMovMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Guardar cambios
             </Button>
           </DialogFooter>
         </form>

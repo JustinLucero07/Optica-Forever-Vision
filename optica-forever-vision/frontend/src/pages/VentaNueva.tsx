@@ -6,6 +6,7 @@ import { Search, Plus, Trash2, ArrowLeft, ShoppingCart, Loader2, Receipt, Clipbo
 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
+import { cuentasParaMetodo, cuentaPorDefecto } from "@/lib/metodosCuenta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -151,7 +152,7 @@ export default function VentaNueva() {
   const [cobroCuentaId, setCobroCuentaId] = useState("")
   const [cobroMonto, setCobroMonto] = useState("")
 
-  const { data: cuentasBancarias = [] } = useQuery<{ id: number; nombre: string }[]>({
+  const { data: cuentasBancarias = [] } = useQuery<{ id: number; nombre: string; tipo: string; activa: boolean }[]>({
     queryKey: ["cuentas-bancarias"],
     queryFn: () => api.get("/cuentas-bancarias").then(r => r.data),
     staleTime: 60_000,
@@ -475,13 +476,7 @@ export default function VentaNueva() {
                       <select value={cobroMetodo} onChange={e => {
                           const m = e.target.value
                           setCobroMetodo(m)
-                          if (m === "tarjeta") {
-                            const datafono = cuentasBancarias.find(c => /dataf|maquina|tarjeta/i.test(c.nombre))
-                            if (datafono) setCobroCuentaId(String(datafono.id))
-                          } else if (m === "efectivo") {
-                            const ef = cuentasBancarias.find(c => /efectivo/i.test(c.nombre))
-                            if (ef) setCobroCuentaId(String(ef.id))
-                          }
+                          setCobroCuentaId(String(cuentaPorDefecto(cuentasBancarias, m, true)?.id ?? ""))
                         }}
                         className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
                         <option value="efectivo">Efectivo</option>
@@ -492,7 +487,7 @@ export default function VentaNueva() {
                       <select value={cobroCuentaId} onChange={e => setCobroCuentaId(e.target.value)}
                         className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-sm">
                         <option value="">— cuenta —</option>
-                        {cuentasBancarias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        {cuentasParaMetodo(cuentasBancarias, cobroMetodo, true).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                       </select>
                     </div>
                   </div>

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Paginador } from "@/components/ui/Paginador"
 import { Link } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
@@ -9,6 +9,7 @@ import { Plus, Loader2, CreditCard, ChevronDown, ChevronUp, Printer, UserCheck, 
 import { api } from "@/lib/api"
 import { errMsg } from "@/lib/errors"
 import { deleteWithUndo } from "@/lib/confirm"
+import { cuentasParaMetodo, cuentaPorDefecto } from "@/lib/metodosCuenta"
 import { getMarcaFooter, PDF_BASE_CSS, openPrintWindow, getMarcaLogo } from "@/lib/pdf"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,7 +33,7 @@ interface Credito {
   numero_cuotas: number; periodicidad: string; fecha_inicio: string; estado: string
   notas: string | null; cuotas?: Cuota[]; created_at: string
 }
-interface Cuenta { id: number; nombre: string; activa: boolean }
+interface Cuenta { id: number; nombre: string; tipo: string; activa: boolean }
 interface VentaPendiente { id: number; numero: string; total: number; paciente_nombre: string | null }
 
 type CreditoForm = { venta_id: string; monto_total: string; abono_inicial: string; numero_cuotas: string; periodicidad: string; fecha_inicio: string; notas: string }
@@ -222,7 +223,15 @@ export default function Creditos() {
 
 
   const { register: rN, handleSubmit: hsN, reset: resetN, setValue: svN, watch: wN } = useForm<CreditoForm>()
-  const { register: rP, handleSubmit: hsP, reset: resetP, watch: watchP } = useForm<PagoForm>()
+  const { register: rP, handleSubmit: hsP, reset: resetP, watch: watchP, setValue: svP } = useForm<PagoForm>()
+  // Mantener la cuenta coherente con el método de pago elegido
+  const metodoPago = watchP("metodo_pago")
+  useEffect(() => {
+    if (!metodoPago) return
+    if (!cuentasParaMetodo(cuentas, metodoPago, true).some(c => c.id === Number(watchP("cuenta_bancaria_id")))) {
+      svP("cuenta_bancaria_id", String(cuentaPorDefecto(cuentas, metodoPago, true)?.id ?? ""))
+    }
+  }, [metodoPago, cuentas.length])
 
   const crearMut = useMutation({
     mutationFn: (d: CreditoForm) => api.post("/creditos", {
@@ -275,7 +284,7 @@ export default function Creditos() {
 
   function abrirPago(credito: Credito, cuota: Cuota) {
     const saldo = Number(cuota.monto) - Number(cuota.monto_pagado)
-    resetP({ fecha_pago: hoy, metodo_pago: "efectivo", monto: saldo.toFixed(2), cuenta_bancaria_id: cuentas[0]?.id.toString() ?? "" })
+    resetP({ fecha_pago: hoy, metodo_pago: "efectivo", monto: saldo.toFixed(2), cuenta_bancaria_id: cuentaPorDefecto(cuentas, "efectivo", true)?.id.toString() ?? "" })
     setPagandoCuota({ credito, cuota })
   }
 
@@ -635,7 +644,7 @@ export default function Creditos() {
               <div className="space-y-1">
                 <Label>Cuenta destino *</Label>
                 <select {...rP("cuenta_bancaria_id", { required: true })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  {cuentas.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  {cuentasParaMetodo(cuentas, watchP("metodo_pago") ?? "efectivo", true).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </div>
             </div>
